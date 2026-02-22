@@ -1,0 +1,1 @@
+export default function KitPage({ params }: { params: { slug: string } }) { return <div>Kit Page: {params.slug}</div>; }
