@@ -1,0 +1,12 @@
+{
+  "name": "wartracker",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File .\\start.ps1",
+    "dev:frontend": "pnpm --dir frontend dev",
+    "dev:backend": "pnpm --dir backend dev",
+    "build": "pnpm --dir backend build && pnpm --dir frontend build"
+  }
+}
