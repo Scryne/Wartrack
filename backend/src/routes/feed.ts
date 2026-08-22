@@ -3,26 +3,48 @@ import db from '../db';
 import { getArticles, getSourceStats, fetchAllFeeds, getFeedMetrics } from '../services/rss.service';
 import { computeReliability } from '../services/reliability.service';
 import { validateTurkishOutput } from '../lib/languageGuard';
+import { rateLimit } from '../lib/rateLimit';
+import { QueryParamError, optionalInt, optionalString } from '../lib/queryParams';
+import { asyncRoute } from '../lib/http';
+import { jobMetrics } from '../lib/jobMetrics';
 
 const router = Router();
 
 router.get('/', (req, res) => {
   try {
     const opts = {
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
-      offset: req.query.offset ? Number(req.query.offset) : undefined,
-      category: req.query.category as string | undefined,
-      search: req.query.search as string | undefined,
-      source: req.query.source as string | undefined
+      limit: optionalInt(req.query.limit, 'limit', { fallback: 50, min: 1, max: 200 }),
+      offset: optionalInt(req.query.offset, 'offset', { fallback: 0, min: 0, max: 1_000_000 }),
+      category: optionalString(req.query.category, 'category'),
+      search: optionalString(req.query.search, 'search'),
+      source: optionalString(req.query.source, 'source')
     };
 
     const result = getArticles(opts);
     res.json(result);
   } catch (err) {
+    // A malformed query is the client's error, not ours. It used to reach the
+    // SQLite bind and come back as a 500 ("datatype mismatch"), or — for
+    // limit=abc — bind NaN, which SQLite reads as NULL, making LIMIT unbounded.
+    if (err instanceof QueryParamError) {
+      return res.status(400).json({ message: err.message });
+    }
     console.error('[RSS] GET /api/feed error:', err);
     res.status(500).json({ message: 'Feed articles could not be retrieved.' });
   }
 });
+
+interface MapPinArticleRow {
+  id: number;
+  title: string;
+  source: string;
+  pubDate: string;
+  lat: number;
+  lng: number;
+  aiSummary: string | null;
+  category: string;
+  link: string;
+}
 
 router.get('/map-pins', (_req, res) => {
   try {
@@ -34,8 +56,8 @@ router.get('/map-pins', (_req, res) => {
          ORDER BY pubDate DESC
          LIMIT 30`
       )
-      .all();
-    const enriched = (rows as any[]).map((row) => ({
+      .all() as MapPinArticleRow[];
+    const enriched = rows.map((row) => ({
       ...row,
       aiSummary: row.aiSummary && validateTurkishOutput(String(row.aiSummary)).valid ? row.aiSummary : undefined,
       ...computeReliability({
@@ -65,14 +87,24 @@ router.get('/sources', (_req, res) => {
 
 router.get('/health', (_req, res) => {
   try {
-    res.json(getFeedMetrics());
+    // jobMetrics is what makes a stalled scheduler visible: fetch counters
+    // alone stay flat both when nothing failed and when every tick threw.
+    res.json({ ...getFeedMetrics(), ...jobMetrics });
   } catch (err) {
     console.error('[RSS] GET /api/feed/health error:', err);
     res.status(500).json({ message: 'Feed health could not be retrieved.' });
   }
 });
 
-router.post('/refresh', async (req, res) => {
+// Each call fans out to 15 third-party feeds; trivially abusable as an
+// outbound-traffic amplifier.
+const refreshRateLimit = rateLimit({
+  max: 6,
+  windowMs: 60_000,
+  message: 'Feed yenileme istekleri sınırlandırıldı.'
+});
+
+router.post('/refresh', refreshRateLimit, asyncRoute(async (req, res) => {
   try {
     const result = await fetchAllFeeds();
 
@@ -93,6 +125,6 @@ router.post('/refresh', async (req, res) => {
     console.error('[RSS] POST /api/feed/refresh error:', err);
     res.status(500).json({ message: 'Feed refresh failed.' });
   }
-});
+}));
 
 export default router;
