@@ -5,7 +5,8 @@ import {
   extractTokens,
   evaluatePairwiseCorroboration,
   resolveIndependentSourceCount,
-  calculateDistanceKm
+  calculateDistanceKm,
+  clusterRecentEvents
 } from "../src/services/corroboration.service";
 
 describe("THREAT ENGINE PROPERTY & INVARIANT ADVERSARIAL AUDIT", () => {
@@ -382,5 +383,81 @@ describe("THREAT ENGINE PROPERTY & INVARIANT ADVERSARIAL AUDIT", () => {
 
     expect(enTokens.has("__loc_damascus__")).toBe(true);
     expect(trTokens.has("__loc_damascus__")).toBe(true);
+  });
+
+  it("Invariant 17: Specific Facility Conflict at Centroid (Distance 0.0 km) — conflicting specific targets strictly split", () => {
+    // Both assigned exact Damascus city center (33.5138, 36.2765)
+    const damascusAirport = {
+      title: "Explosion rocks Damascus international airport runway",
+      lat: 33.5138,
+      lng: 36.2765,
+      hoursAgo: 1.0
+    };
+    const damascusPowerPlant = {
+      title: "Explosion rocks Damascus thermal power plant and oil refinery",
+      lat: 33.5138,
+      lng: 36.2765,
+      hoursAgo: 1.0
+    };
+
+    const tokensAirport = extractTokens(damascusAirport.title);
+    const tokensEnergy = extractTokens(damascusPowerPlant.title);
+
+    const decision = evaluatePairwiseCorroboration(
+      { lat: damascusAirport.lat, lng: damascusAirport.lng, tokens: tokensAirport, hoursAgo: damascusAirport.hoursAgo },
+      { lat: damascusPowerPlant.lat, lng: damascusPowerPlant.lng, tokens: tokensEnergy, hoursAgo: damascusPowerPlant.hoursAgo }
+    );
+
+    expect(decision.isMatch).toBe(false);
+    expect(decision.targetConflict).toBe(true);
+    expect(decision.hardSplitReason).toBe("FACILITY_TARGET_CONFLICT");
+  });
+
+  it("Invariant 18: Epistemic Safety on Unconfirmed Rumors — speculative claims never achieve HIGH confidence", () => {
+    db.prepare(`
+      INSERT INTO events (type, title, description, severity, source, lat, lng, createdAt)
+      VALUES 
+        ('strike', 'Unconfirmed rumor of missile strike on Damascus depot', 'Social media claims unconfirmed explosions', '3', 'Portal A', 33.5138, 36.2765, @t1),
+        ('strike', 'Unconfirmed rumor of missile strike on Damascus depot', 'Another unconfirmed claim', '3', 'Portal B', 33.5138, 36.2765, @t2),
+        ('strike', 'Unconfirmed rumor of missile strike on Damascus depot', 'Third unconfirmed report circulating', '3', 'Portal C', 33.5138, 36.2765, @t3)
+    `).run({
+      t1: new Date(Date.now() - 30 * 60_000).toISOString(),
+      t2: new Date(Date.now() - 25 * 60_000).toISOString(),
+      t3: new Date(Date.now() - 20 * 60_000).toISOString()
+    });
+
+    const clusters = clusterRecentEvents(24);
+
+    expect(clusters.length).toBeGreaterThan(0);
+    for (const cluster of clusters) {
+      expect(cluster.confidence).not.toBe("HIGH");
+      expect(cluster.confidence).toBe("MEDIUM");
+    }
+  });
+
+  it("Invariant 19: Denial vs Event Contradiction at Centroid — official denials strictly split from positive claims", () => {
+    const strikeClaim = {
+      title: "Missile strike reported against central military airbase in Damascus",
+      lat: 33.5138,
+      lng: 36.2765,
+      hoursAgo: 1.0
+    };
+    const officialDenial = {
+      title: "Defense ministry denies reports of airbase strike in Damascus, operating normally",
+      lat: 33.5138,
+      lng: 36.2765,
+      hoursAgo: 1.2
+    };
+
+    const tokensClaim = extractTokens(strikeClaim.title);
+    const tokensDenial = extractTokens(officialDenial.title);
+
+    const decision = evaluatePairwiseCorroboration(
+      { lat: strikeClaim.lat, lng: strikeClaim.lng, tokens: tokensClaim, hoursAgo: strikeClaim.hoursAgo },
+      { lat: officialDenial.lat, lng: officialDenial.lng, tokens: tokensDenial, hoursAgo: officialDenial.hoursAgo }
+    );
+
+    expect(decision.isMatch).toBe(false);
+    expect(decision.hardSplitReason).toBe("DENIAL_VS_EVENT_CONFLICT");
   });
 });
