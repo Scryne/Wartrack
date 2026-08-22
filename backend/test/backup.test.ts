@@ -293,4 +293,46 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
       restoreBackup(backupPath); // defaults to DATABASE_PATH
     }).toThrow(/FAIL-CLOSED RESTORE ERROR/);
   });
+
+  it("produces verifiable SHA-256 checksums and companion metadata artifacts", async () => {
+    const { isCloudSyncPath } = await import("../src/services/backup.service");
+
+    // Test cloud sync detection
+    expect(isCloudSyncPath("C:\\Users\\admin\\OneDrive\\Wartrack").isSyncPath).toBe(true);
+    expect(isCloudSyncPath("/home/user/Dropbox/data").isSyncPath).toBe(true);
+    expect(isCloudSyncPath("/var/opt/wartracker/backups").isSyncPath).toBe(false);
+
+    testDb.prepare(`
+      INSERT INTO articles (guid, title, link, source, category)
+      VALUES ('guid-meta', 'Metadata Test Article', 'https://example.com/meta', 'Reuters', 'haber')
+    `).run();
+
+    const result = await createBackup({
+      sourceDb: testDb as any,
+      destinationDir: testBackupDir,
+      retentionCount: 5
+    });
+
+    expect(result.sha256Checksum).toMatch(/^[a-f0-9]{64}$/);
+    expect(fs.existsSync(result.metadataPath)).toBe(true);
+
+    const meta = JSON.parse(fs.readFileSync(result.metadataPath, "utf8"));
+    expect(meta.sha256Checksum).toBe(result.sha256Checksum);
+    expect(meta.databaseSchemaVersion).toBe(5);
+    expect(meta.applicationVersion).toBe("0.1.0");
+    expect(meta.corroborationAlgorithmVersion).toBe("v2.1-tactical");
+    expect(meta.tablesSummary.articles).toBe(1);
+
+    const listed = listBackups(testBackupDir);
+    expect(listed[0].sha256Checksum).toBe(result.sha256Checksum);
+    expect(listed[0].schemaVersion).toBe(5);
+
+    // Tamper detection: modify backup file and verify restore detects checksum mismatch
+    testDb.close();
+    fs.appendFileSync(result.backupPath, "\nTAMPERED_BYTES");
+
+    expect(() => {
+      restoreBackup(result.backupPath, testDbPath);
+    }).toThrow(/checksum mismatch/i);
+  });
 });

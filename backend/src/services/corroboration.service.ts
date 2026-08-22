@@ -90,6 +90,8 @@ export const TACTICAL_SYNONYMS: Array<{ pattern: RegExp; canonical: string }> = 
   { pattern: /\b(depots?|warehouses?|munitions?|ammunition|storage|armaments?|depo|muhimmat\s*deposu|lojistik\s*depo|ambar|silah|cephanelik)\b/gi, canonical: "__target_depot__" },
   { pattern: /\b(radars?|sensors?|surveillance|tracking|radar\s*istasyonu|erken\s*uyar[i])\b/gi, canonical: "__target_radar__" },
   { pattern: /\b(convoys?|transports?|columns?|trucks?|shipments?|konvoy|lojistik\s*arac|sevkiyat|tas[i]yan)\b/gi, canonical: "__target_convoy__" },
+  { pattern: /\b(pipelines?|refiner(?:y|ies)|petroleum|gas\s*pipeline|oil\s*terminal|boru\s*hatt[i]|rafineri|petrol|dogalgaz)\b/gi, canonical: "__target_energy__" },
+  { pattern: /\b(satellites?|orbits?|orbital|exo-atmospheric|uydu|yorunge)\b/gi, canonical: "__target_satellite__" },
   { pattern: /\b(facility|facilities|installation|installations?|complex|base|headquarters|barracks|tesis|tesisler|karargah|askeri\s*us|kisl[a|e])\b/gi, canonical: "__target_facility__" },
 
   // Drill & Training vs Combat Conflict Guard
@@ -104,8 +106,12 @@ export const TACTICAL_SYNONYMS: Array<{ pattern: RegExp; canonical: string }> = 
   { pattern: /\b(skirmishes?|clashes?|combats?|gunfire|duels?|firefight|ambush|ambushed|cat[i]sma|silahl[i]\s*cat[i]sma|munakasa|pusu)\b/gi, canonical: "__act_clash__" },
   { pattern: /\b(artillery|howitzers?|cannons?|shelling|shells?|topcu|top\s*at[i]s[i]|top\s*mermisi|obus)\b/gi, canonical: "__act_artillery__" },
   { pattern: /\b(electronic\s*warfare|gps\s*jamming|countermeasures?|jamming|elektronik\s*harp|karistirma|sinyal\s*kesici)\b/gi, canonical: "__act_ew__" },
-  { pattern: /\b(protests?|rally|rallies|demonstrators?|march|marched|protesto|yuruyus|gosteri|eylem)\b/gi, canonical: "__act_civil__" },
-  { pattern: /\b(denies|denied|denial|refuting|refuted|dismisses|dismissed|claims?|claimed|unconfirmed|alleged|rumors?|yalanlad[i]|iddia|iddias[i]|reddetti|dogrulanmam[i]s|soylenti|yalanlama)\b/gi, canonical: "__context_claim__" },
+  { pattern: /\b(cyber|cyberattack|malware|scada|telemetry|siber|siber\s*saldiri|zararli\s*yazilim)\b/gi, canonical: "__act_cyber__" },
+  { pattern: /\b(pirates?|piracy|boarding|boarded|hijacked|hijacking|korsan|korsanlar|baskin|gemi\s*kacirma|el\s*koydu)\b/gi, canonical: "__act_piracy__" },
+  { pattern: /\b(periscopes?|submarines?|reconnaissance|patrol|surveillance\s*flight|gozetleme|kesif|denizalti)\b/gi, canonical: "__act_recon__" },
+  { pattern: /\b(protests?|rally|rallies|demonstrators?|demonstrations?|march|marched|riot|riots|rioting|prisoners?|prison|detention|protesto|yuruyus|gosteri|eylem|isyan|cezaevi|tutukevi)\b/gi, canonical: "__act_civil__" },
+  { pattern: /\b(refutes?|refuted|refuting|dismisses?|dismissed|denies|denied|denial|operating\s*normally|fake\s*news|hoax|yalanlad[i]|asilsiz|gercegi\s*yansitmiyor|yalanlama)\b/gi, canonical: "__context_denial__" },
+  { pattern: /\b(claims?|claimed|unconfirmed|alleged|rumors?|iddia|iddias[i]|dogrulanmam[i]s|soylenti)\b/gi, canonical: "__context_claim__" },
   { pattern: /\b(struck|strike|hits?|targeted|bombing|vurdu|vuruldu|hedef\s*ald[i]|hedef\s*al[i]nd[i]|isabet\s*etti|imha)\b/gi, canonical: "__act_hit__" },
   { pattern: /\b(casualties|deaths?|killed|wounded|injured|fatalities|olu|yaral[i]|kay[i]p|can\s*kayb[i]|sehit)\b/gi, canonical: "__context_casualty__" },
 
@@ -396,20 +402,82 @@ export function evaluatePairwiseCorroboration(
     };
   }
 
-  // 4. Target / Facility Conflict
+  // 4. Official Denial / Refutation vs Positive Event Contradiction
+  const denial1 = ev1.tokens.has("__context_denial__");
+  const denial2 = ev2.tokens.has("__context_denial__");
+  if (
+    denial1 !== denial2 &&
+    (isMilitary1 || isMilitary2 || ev1.tokens.has("__act_explosion__") || ev2.tokens.has("__act_explosion__"))
+  ) {
+    return {
+      isMatch: false,
+      geographicDistanceKm: distKm === Infinity ? null : distKm,
+      geographicScore: distKm !== Infinity ? Math.max(0, 1 - distKm / 50) : 0.5,
+      temporalDiffHours: temporalDiff,
+      temporalScore: Math.max(0, 1 - temporalDiff / 6),
+      semanticSimilarity: sim,
+      sharedTokens: sharedTokensList,
+      targetConflict: false,
+      hardSplitReason: "DENIAL_VS_EVENT_CONFLICT",
+      confidenceScore: 0.05,
+      confidenceLabel: "LOW",
+      algorithmVersion: CORROBORATION_ALGORITHM_VERSION
+    };
+  }
+
+  // 5. Pure Reconnaissance vs Kinetic Strike Contradiction
+  const recon1 = ev1.tokens.has("__act_recon__");
+  const recon2 = ev2.tokens.has("__act_recon__");
+  const isKinetic1 =
+    ev1.tokens.has("__act_strike__") ||
+    ev1.tokens.has("__act_drone__") ||
+    ev1.tokens.has("__act_missile__") ||
+    ev1.tokens.has("__act_hit__");
+  const isKinetic2 =
+    ev2.tokens.has("__act_strike__") ||
+    ev2.tokens.has("__act_drone__") ||
+    ev2.tokens.has("__act_missile__") ||
+    ev2.tokens.has("__act_hit__");
+  const pureRecon1 = recon1 && !isKinetic1;
+  const pureRecon2 = recon2 && !isKinetic2;
+
+  if (pureRecon1 !== pureRecon2 && (isKinetic1 || isKinetic2) && !ev1.tokens.has("__act_clash__") && !ev2.tokens.has("__act_clash__")) {
+    return {
+      isMatch: false,
+      geographicDistanceKm: distKm === Infinity ? null : distKm,
+      geographicScore: distKm !== Infinity ? Math.max(0, 1 - distKm / 50) : 0.5,
+      temporalDiffHours: temporalDiff,
+      temporalScore: Math.max(0, 1 - temporalDiff / 6),
+      semanticSimilarity: sim,
+      sharedTokens: sharedTokensList,
+      targetConflict: false,
+      hardSplitReason: "RECON_VS_KINETIC_CONFLICT",
+      confidenceScore: 0.05,
+      confidenceLabel: "LOW",
+      algorithmVersion: CORROBORATION_ALGORITHM_VERSION
+    };
+  }
+
+  // 6. Target / Facility Conflict
+  const SPECIFIC_TARGETS = new Set([
+    "__target_airport__",
+    "__target_port__",
+    "__target_depot__",
+    "__target_bunker__",
+    "__target_radar__",
+    "__target_convoy__",
+    "__target_energy__",
+    "__target_satellite__"
+  ]);
   const targets1 = extractPrefixTokens(ev1.tokens, "__target_");
   const targets2 = extractPrefixTokens(ev2.tokens, "__target_");
-  let hasTargetConflict = false;
+  const specTargets1 = new Set([...targets1].filter((t) => SPECIFIC_TARGETS.has(t)));
+  const specTargets2 = new Set([...targets2].filter((t) => SPECIFIC_TARGETS.has(t)));
 
-  if (targets1.size > 0 && targets2.size > 0) {
-    let hasSharedTarget = false;
-    for (const t of targets1) {
-      if (targets2.has(t)) {
-        hasSharedTarget = true;
-        break;
-      }
-    }
-    if (!hasSharedTarget) {
+  let hasTargetConflict = false;
+  if (specTargets1.size > 0 && specTargets2.size > 0) {
+    const hasShared = [...specTargets1].some((t) => specTargets2.has(t));
+    if (!hasShared) {
       hasTargetConflict = true;
     }
   }
@@ -458,11 +526,28 @@ export function evaluatePairwiseCorroboration(
     } else if (distKm <= 25) {
       isMatch = !hasTargetConflict && (sim >= 0.15 || sharedCount >= 3);
     } else {
-      isMatch = !hasTargetConflict && sim >= 0.25 && sharedCount >= 3;
+      // 25km - 50km: High-confidence regional match requiring strong overlap and matching action/target
+      // Prohibits localized ground clashes or artillery from merging across 25-50km
+      const isLocalGround1 = ev1.tokens.has("__act_clash__") || ev1.tokens.has("__act_artillery__");
+      const isLocalGround2 = ev2.tokens.has("__act_clash__") || ev2.tokens.has("__act_artillery__");
+      const sharedActions = [...ev1.tokens].filter((t) => t.startsWith("__act_") && ev2.tokens.has(t));
+      const sharedTargets = [...ev1.tokens].filter((t) => t.startsWith("__target_") && ev2.tokens.has(t));
+
+      isMatch =
+        !hasTargetConflict &&
+        !isLocalGround1 &&
+        !isLocalGround2 &&
+        sim >= 0.35 &&
+        sharedCount >= 4 &&
+        (sharedActions.length > 0 || sharedTargets.length > 0);
     }
   } else {
-    // Non-geocoded events
-    isMatch = !hasTargetConflict && (sim >= 0.25 || (sharedCount >= 3 && sim >= 0.15));
+    // Non-geocoded events: Corroborate if high similarity, >=3 shared tokens, or shared tactical action + specific target
+    const sharedActions = [...ev1.tokens].filter((t) => t.startsWith("__act_") && ev2.tokens.has(t));
+    const sharedSpecificTargets = [...ev1.tokens].filter((t) => SPECIFIC_TARGETS.has(t) && ev2.tokens.has(t));
+    isMatch =
+      !hasTargetConflict &&
+      (sim >= 0.25 || sharedCount >= 3 || (sharedActions.length > 0 && sharedSpecificTargets.length > 0));
   }
 
   const geoScore = distKm !== Infinity ? Math.max(0, 1 - distKm / 50) : 0.5;
