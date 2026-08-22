@@ -6,6 +6,7 @@ import { clearInvalidSummaries } from "../services/summarize.service";
 import { autoExtractEvents } from "../routes/events";
 import { getNumberSetting } from "../services/settings.service";
 import { jobMetrics, recordJobFailure } from "../lib/jobMetrics";
+import { createBackup } from "../services/backup.service";
 
 let lastAiMinuteKey = "";
 let lastRssMinuteKey = "";
@@ -149,6 +150,15 @@ export function registerJobs(io: SocketIOServer): void {
       lastAiMinuteKey = gate.nextKey;
 
       await runAiCycle(io);
+    })
+  );
+
+  /* ── Database Backup (Saatlik: RPO <= 1 saat) ── */
+  cron.schedule(
+    "0 * * * *",
+    scheduledTask("backup", async () => {
+      const result = await createBackup();
+      console.info(`[BACKUP] Otomatik veritabanı yedeği alındı: ${result.filename} (${(result.sizeBytes / 1024).toFixed(1)} KB)`);
     })
   );
 
