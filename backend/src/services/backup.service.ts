@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import Database from "better-sqlite3";
 import db, { DATABASE_PATH, PROJECT_ROOT } from "../db";
 
@@ -10,26 +11,45 @@ export interface BackupOptions {
   sourceDbPath?: string;
 }
 
-export interface BackupResult {
-  backupPath: string;
+export interface BackupMetadata {
   filename: string;
   sizeBytes: number;
+  sha256Checksum: string;
+  createdAt: string;
+  databaseSchemaVersion: number;
+  applicationVersion: string;
+  corroborationAlgorithmVersion: string;
+  tablesSummary: Record<string, number>;
+  integrityCheckStatus: string;
+}
+
+export interface BackupResult {
+  backupPath: string;
+  metadataPath: string;
+  filename: string;
+  sizeBytes: number;
+  sha256Checksum: string;
   createdAt: string;
   integrityOk: boolean;
   prunedCount: number;
+  metadata: BackupMetadata;
 }
 
 export interface RestoreResult {
   ok: boolean;
   restoredFrom: string;
   targetPath: string;
+  sha256Verified: boolean;
 }
 
 export interface BackupFileInfo {
   filename: string;
   filePath: string;
+  metadataPath?: string;
   sizeBytes: number;
   createdAt: string;
+  sha256Checksum?: string;
+  schemaVersion?: number;
 }
 
 /**
@@ -37,16 +57,20 @@ export interface BackupFileInfo {
  * Enables zero-refactor extension to S3 / Object Storage in enterprise production deployments.
  */
 export interface IBackupStorage {
-  save(tempFilePath: string, finalFilename: string, destDir: string): Promise<string>;
+  save(tempFilePath: string, finalFilename: string, destDir: string, metadata?: BackupMetadata): Promise<string>;
   list(destDir: string): Promise<BackupFileInfo[]>;
   prune(destDir: string, retentionCount: number): Promise<number>;
   verify(filePath: string): Promise<{ ok: boolean; errors?: string[] }>;
 }
 
 export class LocalFilesystemStorage implements IBackupStorage {
-  save(tempFilePath: string, finalFilename: string, destDir: string): Promise<string> {
+  save(tempFilePath: string, finalFilename: string, destDir: string, metadata?: BackupMetadata): Promise<string> {
     const finalPath = path.join(destDir, finalFilename);
     fs.renameSync(tempFilePath, finalPath);
+    if (metadata) {
+      const metaPath = path.join(destDir, `${finalFilename}.meta.json`);
+      fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), "utf8");
+    }
     return Promise.resolve(finalPath);
   }
 
@@ -65,16 +89,50 @@ export class LocalFilesystemStorage implements IBackupStorage {
 
 const DEFAULT_BACKUP_DIR = path.join(PROJECT_ROOT, "backups");
 const DEFAULT_RETENTION_COUNT = 7;
+const APP_VERSION = "0.1.0";
+const CORROBORATION_VERSION = "v2.1-tactical";
 
 /** In-process mutex to prevent concurrent backup invocations */
 let isBackupInProgress = false;
 
 /**
- * Resolves the active backup directory with security path normalization.
+ * Checks whether a given directory is located within a known cloud-synchronized folder
+ * (OneDrive, Dropbox, Google Drive, iCloud, Nextcloud).
+ */
+export function isCloudSyncPath(directoryPath: string): { isSyncPath: boolean; provider?: string } {
+  const normalized = path.resolve(directoryPath).toLowerCase();
+  if (normalized.includes("onedrive")) return { isSyncPath: true, provider: "Microsoft OneDrive" };
+  if (normalized.includes("dropbox")) return { isSyncPath: true, provider: "Dropbox" };
+  if (normalized.includes("google drive") || normalized.includes("googledrive")) return { isSyncPath: true, provider: "Google Drive" };
+  if (normalized.includes("icloud")) return { isSyncPath: true, provider: "Apple iCloud" };
+  if (normalized.includes("nextcloud")) return { isSyncPath: true, provider: "Nextcloud" };
+  return { isSyncPath: false };
+}
+
+/**
+ * Resolves the active backup directory with security path normalization and cloud sync risk detection.
  */
 export function resolveBackupDir(customDir?: string): string {
   const target = customDir ?? process.env.BACKUP_DIR ?? DEFAULT_BACKUP_DIR;
-  return path.resolve(target);
+  const resolved = path.resolve(target);
+
+  const syncCheck = isCloudSyncPath(resolved);
+  if (syncCheck.isSyncPath) {
+    console.warn(
+      `[BACKUP WARNING] Backup destination "${resolved}" is within a cloud-synchronized folder (${syncCheck.provider}). ` +
+      `Cloud file-locking may interfere with atomic operations. For production, set BACKUP_DIR to an isolated local disk volume.`
+    );
+  }
+
+  return resolved;
+}
+
+/**
+ * Computes SHA-256 cryptographic hash of a file.
+ */
+export function computeFileSha256(filePath: string): string {
+  const fileBuffer = fs.readFileSync(path.resolve(filePath));
+  return crypto.createHash("sha256").update(fileBuffer).digest("hex");
 }
 
 /**
@@ -114,9 +172,41 @@ export function verifyBackupIntegrity(backupPath: string): { ok: boolean; errors
 }
 
 /**
+ * Extracts table summary and schema version from an active SQLite database.
+ */
+export function extractDatabaseMetadata(activeDb: typeof db): {
+  schemaVersion: number;
+  tablesSummary: Record<string, number>;
+} {
+  let schemaVersion = 1;
+  const tablesSummary: Record<string, number> = {};
+
+  try {
+    const verRow = activeDb.prepare("SELECT MAX(version) as maxVer FROM schema_migrations").get() as { maxVer: number | null } | undefined;
+    if (verRow && typeof verRow.maxVer === "number") {
+      schemaVersion = verRow.maxVer;
+    }
+  } catch {
+    schemaVersion = 1;
+  }
+
+  const tableNames = ["articles", "events", "pins", "bookmarks", "settings"];
+  for (const table of tableNames) {
+    try {
+      const countRow = activeDb.prepare(`SELECT COUNT(*) as cnt FROM ${table}`).get() as { cnt: number } | undefined;
+      tablesSummary[table] = countRow?.cnt ?? 0;
+    } catch {
+      tablesSummary[table] = 0;
+    }
+  }
+
+  return { schemaVersion, tablesSummary };
+}
+
+/**
  * Creates a transactional, WAL-safe online backup of the SQLite database.
  * Uses atomic temp-file promotion, in-process concurrency locking,
- * and validates PRAGMA integrity_check before finalizing.
+ * generates SHA-256 checksums and companion metadata artifacts, and validates PRAGMA integrity_check.
  */
 export async function createBackup(options: BackupOptions = {}): Promise<BackupResult> {
   if (isBackupInProgress) {
@@ -124,38 +214,40 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupR
   }
 
   isBackupInProgress = true;
+  let tempPath: string | undefined;
 
-  const destDir = resolveBackupDir(options.destinationDir);
-  const retention = options.retentionCount ?? Number(process.env.BACKUP_RETENTION_COUNT ?? DEFAULT_RETENTION_COUNT);
-  const activeDb = options.sourceDb ?? db;
-
-  if (!fs.existsSync(destDir)) {
-    fs.mkdirSync(destDir, { recursive: true });
-  }
-
-  // Cleanup any lingering stale .tmp backup files in destination directory
   try {
-    const existingEntries = fs.readdirSync(destDir);
-    for (const entry of existingEntries) {
-      if (entry.startsWith("wartracker-backup-") && entry.endsWith(".tmp")) {
-        try {
-          fs.unlinkSync(path.join(destDir, entry));
-        } catch {
-          // ignore stale cleanup errors
+    const destDir = resolveBackupDir(options.destinationDir);
+    const retention = options.retentionCount ?? Number(process.env.BACKUP_RETENTION_COUNT ?? DEFAULT_RETENTION_COUNT);
+    const activeDb = options.sourceDb ?? db;
+
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    // Cleanup any lingering stale .tmp backup files in destination directory
+    try {
+      const existingEntries = fs.readdirSync(destDir);
+      for (const entry of existingEntries) {
+        if (entry.startsWith("wartracker-backup-") && entry.endsWith(".tmp")) {
+          try {
+            fs.unlinkSync(path.join(destDir, entry));
+          } catch {
+            // ignore stale cleanup errors
+          }
         }
       }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
-  }
 
-  const now = new Date();
-  const timestampStr = now.toISOString().replace(/[:.]/g, "-");
-  const filename = `wartracker-backup-${timestampStr}.db`;
-  const finalPath = path.join(destDir, filename);
-  const tempPath = path.join(destDir, `${filename}.tmp`);
+    const now = new Date();
+    const timestampStr = now.toISOString().replace(/[:.]/g, "-");
+    const filename = `wartracker-backup-${timestampStr}.db`;
+    const finalPath = path.join(destDir, filename);
+    const metadataPath = path.join(destDir, `${filename}.meta.json`);
+    tempPath = path.join(destDir, `${filename}.tmp`);
 
-  try {
     // 1. Perform online consistent snapshot via better-sqlite3 backup API
     await activeDb.backup(tempPath);
 
@@ -169,21 +261,41 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupR
     fs.renameSync(tempPath, finalPath);
 
     const stats = fs.statSync(finalPath);
+    const sha256Checksum = computeFileSha256(finalPath);
+    const { schemaVersion, tablesSummary } = extractDatabaseMetadata(activeDb);
 
-    // 4. Rotate old backups beyond the retention limit
+    const metadata: BackupMetadata = {
+      filename,
+      sizeBytes: stats.size,
+      sha256Checksum,
+      createdAt: now.toISOString(),
+      databaseSchemaVersion: schemaVersion,
+      applicationVersion: APP_VERSION,
+      corroborationAlgorithmVersion: CORROBORATION_VERSION,
+      tablesSummary,
+      integrityCheckStatus: "ok"
+    };
+
+    // 4. Save companion metadata artifact
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+
+    // 5. Rotate old backups beyond the retention limit
     const prunedCount = rotateBackups(destDir, retention);
 
     return {
       backupPath: finalPath,
+      metadataPath,
       filename,
       sizeBytes: stats.size,
+      sha256Checksum,
       createdAt: now.toISOString(),
       integrityOk: true,
-      prunedCount
+      prunedCount,
+      metadata
     };
   } catch (err) {
     // Clean up temporary file if leftover
-    if (fs.existsSync(tempPath)) {
+    if (tempPath && fs.existsSync(tempPath)) {
       try {
         fs.unlinkSync(tempPath);
       } catch {
@@ -198,6 +310,7 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupR
 
 /**
  * Rotates backups in destination directory, keeping the most recent `retentionCount` files.
+ * Cleans up companion `.meta.json` files alongside deleted `.db` files.
  */
 export function rotateBackups(destDir: string, retentionCount: number): number {
   if (!fs.existsSync(destDir) || retentionCount <= 0) return 0;
@@ -214,6 +327,14 @@ export function rotateBackups(destDir: string, retentionCount: number): number {
       deletedCount++;
     } catch (err) {
       console.error(`[BACKUP] Failed to prune old backup ${file.filePath}:`, err);
+    }
+
+    if (file.metadataPath && fs.existsSync(file.metadataPath)) {
+      try {
+        fs.unlinkSync(file.metadataPath);
+      } catch {
+        // ignore metadata prune error
+      }
     }
   }
 
@@ -232,12 +353,30 @@ export function listBackups(customDir?: string): BackupFileInfo[] {
     .filter((name) => name.startsWith("wartracker-backup-") && name.endsWith(".db"))
     .map((name) => {
       const fullPath = path.join(destDir, name);
+      const metaPath = path.join(destDir, `${name}.meta.json`);
       const stat = fs.statSync(fullPath);
+
+      let sha256Checksum: string | undefined;
+      let schemaVersion: number | undefined;
+
+      if (fs.existsSync(metaPath)) {
+        try {
+          const metaContent = JSON.parse(fs.readFileSync(metaPath, "utf8")) as Partial<BackupMetadata>;
+          sha256Checksum = metaContent.sha256Checksum;
+          schemaVersion = metaContent.databaseSchemaVersion;
+        } catch {
+          // ignore corrupted metadata
+        }
+      }
+
       return {
         filename: name,
         filePath: fullPath,
+        metadataPath: fs.existsSync(metaPath) ? metaPath : undefined,
         sizeBytes: stat.size,
-        createdAt: stat.mtime.toISOString()
+        createdAt: stat.mtime.toISOString(),
+        sha256Checksum,
+        schemaVersion
       };
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -269,6 +408,29 @@ export function restoreBackup(backupPath: string, targetDbPath?: string): Restor
   const integrity = verifyBackupIntegrity(resolvedBackup);
   if (!integrity.ok) {
     throw new Error(`Cannot restore corrupted or invalid backup: ${integrity.errors?.join(", ")}`);
+  }
+
+  // Optional: Verify SHA-256 against companion metadata if available
+  let sha256Verified = false;
+  const metaPath = `${resolvedBackup}.meta.json`;
+  if (fs.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, "utf8")) as Partial<BackupMetadata>;
+      if (meta.sha256Checksum) {
+        const actualChecksum = computeFileSha256(resolvedBackup);
+        if (actualChecksum !== meta.sha256Checksum) {
+          throw new Error(
+            `SHA-256 checksum mismatch on backup file! Expected: ${meta.sha256Checksum}, Actual: ${actualChecksum}`
+          );
+        }
+        sha256Verified = true;
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("checksum mismatch")) {
+        throw err;
+      }
+      // Non-fatal if metadata format is legacy
+    }
   }
 
   const targetDir = path.dirname(resolvedTarget);
@@ -328,7 +490,8 @@ export function restoreBackup(backupPath: string, targetDbPath?: string): Restor
     return {
       ok: true,
       restoredFrom: resolvedBackup,
-      targetPath: resolvedTarget
+      targetPath: resolvedTarget,
+      sha256Verified
     };
   } catch (err) {
     // Roll back to pre-restore state if available

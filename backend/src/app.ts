@@ -42,14 +42,24 @@ export function createApp(allowedOrigins: string[]): Express {
   app.use(helmet());
   app.use(compression());
 
+  // Correlation & Request Tracing Middleware
+  app.use((req, res, next) => {
+    const rawReqId = req.headers["x-request-id"];
+    const requestId = typeof rawReqId === "string" && rawReqId.trim().length > 0
+      ? rawReqId.trim().slice(0, 64)
+      : crypto.randomUUID();
+    (req as express.Request & { id?: string }).id = requestId;
+    res.setHeader("X-Request-Id", requestId);
+    next();
+  });
+
   app.use(
     cors({
       origin: allowedOrigins,
       credentials: true,
-      // X-API-Key is not a CORS-safelisted header, so browsers send a preflight
-      // for every write. It must be explicitly allowed or those writes fail
-      // before the request is ever made.
-      allowedHeaders: ["Content-Type", API_KEY_HEADER]
+      // X-API-Key and X-Request-Id are allowed headers
+      allowedHeaders: ["Content-Type", API_KEY_HEADER, "X-Request-Id"],
+      exposedHeaders: ["X-Request-Id"]
     })
   );
 
