@@ -70,9 +70,10 @@ export function ToastContainer() {
 
   useEffect(() => {
     globalAddToast = addToast;
+    const timers = timersRef.current;
     return () => {
       globalAddToast = null;
-      for (const timer of timersRef.current.values()) {
+      for (const timer of timers.values()) {
         clearTimeout(timer);
       }
     };

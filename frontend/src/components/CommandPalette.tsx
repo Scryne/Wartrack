@@ -5,6 +5,10 @@ import { useMapStore } from "../stores/useMapStore";
 import { useEventStore } from "../stores/useEventStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 
+import { showToast } from "./Toast";
+import { apiFetch } from "../lib/api";
+import { playTacticalPulse } from "../lib/audio";
+
 /* ───────────────── COMMAND DEFINITIONS ───────────────── */
 
 interface Command {
@@ -20,25 +24,75 @@ function useCommands(): Command[] {
   const { markAllRead } = useEventStore();
   const setOpen = useSettingsStore((s) => s.setOpen);
 
+  const downloadSitRep = useCallback(async () => {
+    try {
+      showToast("SitRep raporu hazırlanıyor...", "info");
+      const res = await apiFetch("/api/events/sitrep?hours=24&format=markdown");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const markdown = await res.text();
+
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `WARTRACKER-SITREP-${new Date().toISOString().slice(0, 10)}.md`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast("SitRep raporu indirildi.", "success");
+    } catch {
+      showToast("SitRep indirilemedi.", "error");
+    }
+  }, []);
+
+  const copySitRep = useCallback(async () => {
+    try {
+      showToast("SitRep alınıyor...", "info");
+      const res = await apiFetch("/api/events/sitrep?hours=24&format=markdown");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const markdown = await res.text();
+      await navigator.clipboard.writeText(markdown);
+      showToast("SitRep panoya kopyalandı.", "success");
+    } catch {
+      showToast("Panoya kopyalanamadı.", "error");
+    }
+  }, []);
+
   return useMemo(
     () => [
+      // RAPOR & İSTİHBARAT
+      {
+        id: "sitrep-download",
+        label: "Operasyonel SitRep Raporunu İndir (.md)",
+        category: "İSTİHBARAT & RAPOR",
+        action: () => { void downloadSitRep(); },
+      },
+      {
+        id: "sitrep-copy",
+        label: "SitRep Raporunu Panoya Kopyala",
+        category: "İSTİHBARAT & RAPOR",
+        action: () => { void copySitRep(); },
+      },
+
       // WORKSPACE
       {
         id: "ws-iran",
-        label: "İran·İsrail'e git",
-        category: "WORKSPACE",
+        label: "İran·İsrail tiyatrosuna git",
+        category: "HARİTA GÖRÜNÜMÜ",
         action: () => setMapView([32.5, 51], 5),
       },
       {
         id: "ws-kizildeniz",
-        label: "Kızıldeniz'e git",
-        category: "WORKSPACE",
+        label: "Kızıldeniz & Bab el-Mandeb hattına git",
+        category: "HARİTA GÖRÜNÜMÜ",
         action: () => setMapView([15, 42], 6),
       },
       {
         id: "ws-suriye",
-        label: "Suriye'ye git",
-        category: "WORKSPACE",
+        label: "Suriye & Levant hattına git",
+        category: "HARİTA GÖRÜNÜMÜ",
         action: () => setMapView([35, 38], 7),
       },
 
@@ -46,40 +100,48 @@ function useCommands(): Command[] {
       {
         id: "feed-all",
         label: "Tüm haberleri göster",
-        category: "FEED",
+        category: "HABER AKIŞI",
         action: () => setTab("all"),
       },
       {
         id: "feed-refresh",
-        label: "Feed'i yenile",
-        category: "FEED",
-        action: () => { refresh(); },
+        label: "Feed'i şimdi yenile",
+        category: "HABER AKIŞI",
+        action: () => { void refresh(); },
       },
 
-      // ARAÇLAR
+      // ARAÇLAR & ALARMLAR
+      {
+        id: "tool-test-sound",
+        label: "Taktik Tehdit Alarmını Test Et (Ses)",
+        category: "ARAÇLAR & SİSTEM",
+        action: () => {
+          playTacticalPulse("critical");
+          showToast("Taktik alarm sesi çalındı.", "info");
+        },
+      },
       {
         id: "tool-pin",
-        label: "Yeni pin ekle",
-        category: "ARAÇLAR",
+        label: "Yeni taktik pin ekle",
+        category: "ARAÇLAR & SİSTEM",
         action: () => {
-          // Dispatch a custom event that MapPanel can listen to
           window.dispatchEvent(new CustomEvent("wartracker:add-pin"));
         },
       },
       {
         id: "tool-settings",
-        label: "Ayarları aç",
-        category: "ARAÇLAR",
+        label: "Ayarlar ve Sistem Teşhisi panelini aç",
+        category: "ARAÇLAR & SİSTEM",
         action: () => setOpen(true),
       },
       {
         id: "tool-clear-events",
-        label: "Olayları temizle",
-        category: "ARAÇLAR",
+        label: "Olay loglarını okundu olarak işaretle",
+        category: "ARAÇLAR & SİSTEM",
         action: () => markAllRead(),
       },
     ],
-    [setTab, refresh, setMapView, markAllRead, setOpen]
+    [setTab, refresh, setMapView, markAllRead, setOpen, downloadSitRep, copySitRep]
   );
 }
 

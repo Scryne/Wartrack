@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useEventStore } from '../stores/useEventStore';
+import { isAtOrAfter } from '../lib/time';
 
 const LEVELS = {
   1: { label: 'DUSUK', color: '#00D084', bg: 'rgba(0,208,132,0.04)' },
@@ -16,7 +17,7 @@ function ThreatMeter() {
 
   const eventCount = useMemo(() => {
     const cutoff = Date.now() - 60 * 60 * 1000;
-    return events.filter((e) => new Date(e.createdAt).getTime() >= cutoff).length;
+    return events.filter((e) => isAtOrAfter(e.createdAt, cutoff)).length;
   }, [events]);
 
   return (

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Pin, Workspace } from '../types';
+import { apiFetch } from '../lib/api';
 
 export interface NewsPin {
   id: number;
@@ -67,7 +68,14 @@ export const useMapStore = create<MapStoreState>((set) => ({
   hoveredLegendKey: null,
   setPins: (pins) => set({ pins }),
   addPin: (pin) => {
-    set((state) => ({ pins: [pin, ...state.pins] }));
+    // Deduped like prependArticle: a POST response and the pin:created socket
+    // event race, and the socket handler refetches the whole list when it does
+    // not yet see the id.
+    set((state) =>
+      state.pins.some((existing) => existing.id === pin.id)
+        ? state
+        : { pins: [pin, ...state.pins] }
+    );
   },
   updatePinLocal: (pin) => {
     set((state) => ({
@@ -85,7 +93,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
     }));
   },
   deletePin: async (id) => {
-    const response = await fetch(`/api/pins/${id}`, { method: 'DELETE' });
+    const response = await apiFetch(`/api/pins/${id}`, { method: 'DELETE' });
     if (!response.ok) {
       throw new Error('Pin silinemedi');
     }
@@ -97,7 +105,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
     }));
   },
   updatePin: async (id, data) => {
-    const response = await fetch(`/api/pins/${id}`, {
+    const response = await apiFetch(`/api/pins/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -131,7 +139,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
   },
   fetchNewsPins: async () => {
     try {
-      const pins = await fetch('/api/feed/map-pins').then((r) => r.json());
+      const pins = await apiFetch('/api/feed/map-pins').then((r) => r.json());
       if (Array.isArray(pins)) {
         set({ newsPins: pins });
       }

@@ -216,16 +216,18 @@ function AiBriefPanel({ open, loading, brief, model, generatedAt, onClose, onRef
                   {section.title}
                 </div>
 
+                {/* Keyed by position, not content: model output can legitimately
+                    repeat a line, and duplicate keys break reconciliation. */}
                 {section.bullets.length > 0 ? (
                   <ul style={{ margin: 0, paddingLeft: 15, color: "var(--text-primary)", fontSize: 12, lineHeight: 1.55 }}>
-                    {section.bullets.map((item) => (
-                      <li key={item}>{item}</li>
+                    {section.bullets.map((item, idx) => (
+                      <li key={`${section.key}-bullet-${idx}`}>{item}</li>
                     ))}
                   </ul>
                 ) : null}
 
-                {section.paragraphs.map((paragraph) => (
-                  <p key={paragraph} style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.55, marginTop: 6 }}>
+                {section.paragraphs.map((paragraph, idx) => (
+                  <p key={`${section.key}-para-${idx}`} style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.55, marginTop: 6 }}>
                     {paragraph}
                   </p>
                 ))}

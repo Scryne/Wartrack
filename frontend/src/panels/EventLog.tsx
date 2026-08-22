@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useEventStore } from '../stores/useEventStore';
+import { parseTimestamp } from '../lib/time';
 
 function getSeverityColor(severity: string): string {
   const value = Number(severity);
@@ -11,7 +12,10 @@ function getSeverityColor(severity: string): string {
 }
 
 function shortTime(date: string): string {
-  return new Date(date).toLocaleTimeString('tr-TR', {
+  const parsed = parseTimestamp(date);
+  if (!Number.isFinite(parsed)) return '--:--';
+
+  return new Date(parsed).toLocaleTimeString('tr-TR', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false

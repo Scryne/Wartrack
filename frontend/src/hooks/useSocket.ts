@@ -6,31 +6,9 @@ import { useMapStore } from '../stores/useMapStore';
 import { useConnectionStore } from '../stores/useConnectionStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import type { Article, Event as WarEvent, Pin } from '../types';
+import { apiFetch } from '../lib/api';
 
-function playAlertBeep(): void {
-  try {
-    const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.value = 920;
-    gain.gain.value = 0.0001;
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    const now = ctx.currentTime;
-    gain.gain.exponentialRampToValueAtTime(0.1, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
-    oscillator.start(now);
-    oscillator.stop(now + 0.26);
-    oscillator.onended = () => {
-      void ctx.close();
-    };
-  } catch {
-    return;
-  }
-}
+import { playTacticalPulse } from '../lib/audio';
 
 export function useSocket(): void {
   useEffect(() => {
@@ -77,8 +55,11 @@ export function useSocket(): void {
     const onEventNew = (event: WarEvent) => {
       useEventStore.getState().addEvent(event);
       const threatSound = useSettingsStore.getState().threatSound;
-      if (threatSound && Number(event.severity) >= 4) {
-        playAlertBeep();
+      if (threatSound) {
+        const sev = Number(event.severity);
+        if (sev >= 5) playTacticalPulse("critical");
+        else if (sev >= 4) playTacticalPulse("alert");
+        else if (sev >= 3) playTacticalPulse("ping");
       }
     };
 
@@ -86,7 +67,7 @@ export function useSocket(): void {
       if (typeof pin.id === 'number' && typeof pin.lat === 'number' && typeof pin.lng === 'number') {
         const existing = useMapStore.getState().pins.find((current) => current.id === pin.id);
         if (!existing) {
-          void fetch('/api/pins')
+          void apiFetch('/api/pins')
             .then((response) => response.json())
             .then((pinsPayload: Pin[]) => useMapStore.getState().setPins(pinsPayload))
             .catch(() => undefined);
@@ -115,11 +96,26 @@ export function useSocket(): void {
     };
 
     const onThreatUpdate = (data: { level: 1 | 2 | 3 | 4 | 5 }) => {
+      const prevLevel = useEventStore.getState().threatLevel;
       useEventStore.getState().setThreatLevel(data.level);
+      const threatSound = useSettingsStore.getState().threatSound;
+      if (threatSound && data.level > prevLevel && data.level >= 4) {
+        playTacticalPulse("critical");
+      }
     };
 
     const onFeedRefreshed = () => {
       void useFeedStore.getState().fetchArticles();
+    };
+
+    // The backend has always emitted this; nothing listened, so a settings
+    // change in one browser never reached another.
+    const onSettingsUpdated = (payload: { key: string; value: unknown } | Record<string, unknown>) => {
+      const settings =
+        payload && typeof payload === 'object' && 'key' in payload && typeof payload.key === 'string'
+          ? { [payload.key]: (payload as { value: unknown }).value }
+          : (payload as Record<string, unknown>);
+      useSettingsStore.getState().applyServerSettings(settings);
     };
 
     socket.on('connect', () => setConnected(true));
@@ -134,6 +130,7 @@ export function useSocket(): void {
     socket.on('stats:update', onStatsUpdate);
     socket.on('threat:update', onThreatUpdate);
     socket.on('feed:refreshed', onFeedRefreshed);
+    socket.on('settings:updated', onSettingsUpdated);
 
     if (!socket.connected) socket.connect();
 
@@ -150,6 +147,7 @@ export function useSocket(): void {
       socket.off('stats:update', onStatsUpdate);
       socket.off('threat:update', onThreatUpdate);
       socket.off('feed:refreshed', onFeedRefreshed);
+      socket.off('settings:updated', onSettingsUpdated);
       setConnected(false);
     };
   }, []);

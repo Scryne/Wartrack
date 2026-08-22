@@ -28,7 +28,6 @@ function FeedPanel({ onOpenBrief }: FeedPanelProps) {
     lastUpdated,
     refreshing,
     hasMore,
-    filteredArticles,
     fetchArticles,
     setTab,
     setSearch,
@@ -36,11 +35,15 @@ function FeedPanel({ onOpenBrief }: FeedPanelProps) {
     loadMore
   } = useFeedStore();
   const bookmarkArticles = useBookmarkStore((s) => s.articles);
-  const watchKeywords = useWatchlistStore((s) => s.keywords);
+  const matches = useWatchlistStore((s) => s.matches);
 
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const isBookmarksTab = activeTab === 'bookmarks';
-  const orderedArticles = useMemo(() => filteredArticles(), [articles, watchKeywords, filteredArticles]);
+  const orderedArticles = useMemo(() => {
+    const watched = articles.filter((a) => matches(a.title).length > 0);
+    const unwatched = articles.filter((a) => matches(a.title).length === 0);
+    return [...watched, ...unwatched];
+  }, [articles, matches]);
   const displayArticles = isBookmarksTab ? bookmarkArticles : orderedArticles;
   const articleCount = isBookmarksTab ? bookmarkArticles.length : total;
 

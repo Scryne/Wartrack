@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Article } from "../types";
 import { useWatchlistStore } from "./useWatchlistStore";
+import { apiFetch } from "../lib/api";
 
 // API calls go through vite proxy (/api → localhost:3001)
 const PAGE_SIZE = 50;
@@ -56,7 +57,7 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
       if (searchQuery) params.set("search", searchQuery);
       if (selectedSource) params.set("source", selectedSource);
 
-      const res = await fetch(`/api/feed?${params}`);
+      const res = await apiFetch(`/api/feed?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
@@ -92,16 +93,24 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
       if (searchQuery) params.set("search", searchQuery);
       if (selectedSource) params.set("source", selectedSource);
 
-      const res = await fetch(`/api/feed?${params}`);
+      const res = await apiFetch(`/api/feed?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
-      const newArticles = json.data ?? [];
+      const newArticles: Article[] = json.data ?? [];
+
+      // Realtime prepends shift the server-side offset window, so a page can
+      // legitimately contain rows already on screen. Dedupe on append the same
+      // way prependArticle does, otherwise those render with duplicate keys.
+      const seen = new Set(articles.map((a) => a.id));
+      const deduped = newArticles.filter((a) => !seen.has(a.id));
 
       set({
-        articles: [...articles, ...newArticles],
+        articles: [...articles, ...deduped],
         page: nextPage,
         total: json.total ?? 0,
+        // Based on the server page size, not the deduped length: a full page
+        // that happened to be entirely duplicates still means more remain.
         hasMore: newArticles.length >= PAGE_SIZE,
         loading: false,
       });
@@ -113,13 +122,18 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
     }
   },
 
+  // `void`, not a bare call: these are deliberately fire-and-forget. The
+  // setter returns immediately so the tab switch feels instant, and
+  // fetchArticles() reports its own failures into `error` rather than
+  // rejecting. Marking that explicitly keeps the floating-promise rule useful
+  // — an unmarked one here would be a genuine unhandled rejection.
   setTab: (tab) => {
     if (tab === "bookmarks") {
       set({ activeTab: tab });
       return;
     }
     set({ activeTab: tab, articles: [], page: 0, hasMore: true });
-    get().fetchArticles();
+    void get().fetchArticles();
   },
 
   setSearch: (query) => {
@@ -128,18 +142,18 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
       return;
     }
     set({ searchQuery: query, articles: [], page: 0, hasMore: true });
-    get().fetchArticles();
+    void get().fetchArticles();
   },
 
   setSource: (source) => {
     set({ selectedSource: source, articles: [], page: 0, hasMore: true });
-    get().fetchArticles();
+    void get().fetchArticles();
   },
 
   refresh: async () => {
     set({ refreshing: true });
     try {
-      const res = await fetch(`/api/feed/refresh`, { method: "POST" });
+      const res = await apiFetch(`/api/feed/refresh`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await get().fetchArticles();
     } catch {

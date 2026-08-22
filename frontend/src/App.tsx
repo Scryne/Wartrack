@@ -8,6 +8,8 @@ import { ToastContainer } from './components/Toast';
 import { useSocket } from './hooks/useSocket';
 import { useBookmarkStore } from './stores/useBookmarkStore';
 import { useOverlayStore } from './stores/useOverlayStore';
+import { useSettingsStore } from './stores/useSettingsStore';
+import { apiFetch } from './lib/api';
 
 const MapPanel = lazy(() => import('./panels/MapPanel'));
 const FeedPanel = lazy(() => import('./panels/FeedPanel'));
@@ -62,7 +64,7 @@ const App = () => {
     setBriefLoading(true);
 
     try {
-      const res = await fetch('/api/brief', {
+      const res = await apiFetch('/api/brief', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force }),
@@ -149,6 +151,10 @@ Durum özeti servisi geçici olarak erişilemez (${reason}).`);
   useEffect(() => {
     void fetchBookmarks();
   }, [fetchBookmarks]);
+
+  useEffect(() => {
+    void useSettingsStore.getState().hydrate();
+  }, []);
 
   return (
     <div
