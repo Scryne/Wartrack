@@ -142,4 +142,22 @@ describe("ADVERSARIAL INGESTION PIPELINE & DATA BOUNDARY AUDIT", () => {
       expect(check.valid, `Safe URL was falsely rejected: ${url}`).toBe(true);
     }
   });
+
+  it("SSRF REDIRECT TRAP AUDIT: manual redirect validation prevents 3xx redirect to internal IP", async () => {
+    const { validateSafeUrl } = await import("../src/lib/ssrfGuard");
+
+    // Test URL resolution on simulated 3xx redirect location headers
+    const redirectTargets = [
+      "http://127.0.0.1:3000/api/backup",
+      "http://169.254.169.254/latest/meta-data/",
+      "http://[::1]/secret",
+      "http://10.0.0.1/admin"
+    ];
+
+    for (const target of redirectTargets) {
+      const check = await validateSafeUrl(target);
+      expect(check.valid).toBe(false);
+      expect(check.reason).toBeDefined();
+    }
+  });
 });

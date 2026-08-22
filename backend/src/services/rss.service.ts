@@ -225,48 +225,69 @@ const FEED_FETCH_TIMEOUT_MS = 15_000;
 /** A feed is text; anything this large is a misconfiguration or an attack. */
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
 
-async function fetchFeedText(url: string, source: RssSource, attempt: number): Promise<string> {
-  const safeCheck = await validateSafeUrl(url);
-  if (!safeCheck.valid) {
-    throw new Error(`SSRF Blocked: URL for ${source.name} is unsafe (${safeCheck.reason})`);
-  }
+async function fetchFeedText(initialUrl: string, source: RssSource, attempt: number): Promise<string> {
+  let currentUrl = initialUrl;
+  let redirectCount = 0;
+  const MAX_REDIRECTS = 4;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FEED_FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': pickUserAgent(source, attempt),
-        Accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.5',
-        'Accept-Language': 'en-US,en;q=0.8,tr;q=0.6',
-        'Cache-Control': 'no-cache'
-      },
-      signal: controller.signal
-    });
-
-    if (response.status === 403) {
-      feedMetrics.feed_fetch_403_total += 1;
-      throw new Error(`HTTP 403 for ${source.name}`);
-    }
-    if (!response.ok) throw new Error(`HTTP ${response.status} for ${source.name}`);
-
-    // Checked before reading the body: a declared length lets us refuse without
-    // buffering. The post-read check below covers a response that omits it or
-    // lies, since the source is third-party either way.
-    const declaredLength = Number(response.headers.get('content-length') ?? NaN);
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_FEED_BYTES) {
-      throw new Error(`Feed too large for ${source.name}: ${declaredLength} bytes`);
+  while (true) {
+    const safeCheck = await validateSafeUrl(currentUrl);
+    if (!safeCheck.valid) {
+      throw new Error(`SSRF Blocked: URL for ${source.name} is unsafe (${safeCheck.reason})`);
     }
 
-    const text = await response.text();
-    if (text.length > MAX_FEED_BYTES) {
-      throw new Error(`Feed too large for ${source.name}: ${text.length} bytes`);
-    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FEED_FETCH_TIMEOUT_MS);
 
-    return text;
-  } finally {
-    clearTimeout(timeout);
+    try {
+      const response = await fetch(currentUrl, {
+        headers: {
+          'User-Agent': pickUserAgent(source, attempt),
+          Accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.5',
+          'Accept-Language': 'en-US,en;q=0.8,tr;q=0.6',
+          'Cache-Control': 'no-cache'
+        },
+        signal: controller.signal,
+        redirect: 'manual'
+      });
+
+      // Handle redirects manually to prevent SSRF bypass via 3xx redirect to private/metadata IPs
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        redirectCount++;
+        if (redirectCount > MAX_REDIRECTS) {
+          throw new Error(`Too many redirects (max ${MAX_REDIRECTS}) for ${source.name}`);
+        }
+        const locationHeader = response.headers.get('location');
+        if (!locationHeader) {
+          throw new Error(`Redirect ${response.status} missing Location header for ${source.name}`);
+        }
+        currentUrl = new URL(locationHeader, currentUrl).toString();
+        continue;
+      }
+
+      if (response.status === 403) {
+        feedMetrics.feed_fetch_403_total += 1;
+        throw new Error(`HTTP 403 for ${source.name}`);
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status} for ${source.name}`);
+
+      // Checked before reading the body: a declared length lets us refuse without
+      // buffering. The post-read check below covers a response that omits it or
+      // lies, since the source is third-party either way.
+      const declaredLength = Number(response.headers.get('content-length') ?? NaN);
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_FEED_BYTES) {
+        throw new Error(`Feed too large for ${source.name}: ${declaredLength} bytes`);
+      }
+
+      const text = await response.text();
+      if (text.length > MAX_FEED_BYTES) {
+        throw new Error(`Feed too large for ${source.name}: ${text.length} bytes`);
+      }
+
+      return text;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }
 

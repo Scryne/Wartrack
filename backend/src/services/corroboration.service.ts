@@ -86,11 +86,11 @@ export const TACTICAL_SYNONYMS: Array<{ pattern: RegExp; canonical: string }> = 
   // Tactical Target & Facility Types
   { pattern: /\b(subterranean|underground|bunkers?|fortified|fortifications?|s[i]g[i]nak|yer\s*alt[i]|tahkimat)\b/gi, canonical: "__target_bunker__" },
   { pattern: /\b(airports?|airfields?|runways?|hangars?|aerospace|airbase|havaalan[i]|havaliman[i]|hava\s*ussu|pist|hangar)\b/gi, canonical: "__target_airport__" },
-  { pattern: /\b(ports?|harbors?|docks?|piers?|terminals?|naval\s*berths?|maritime|naval|liman|iskele|riht[i]m|deniz\s*ussu|sahil)\b/gi, canonical: "__target_port__" },
-  { pattern: /\b(depots?|warehouses?|munitions?|ammunition|storage|armaments?|depo|muhimmat\s*deposu|lojistik\s*depo|ambar|silah|cephanelik)\b/gi, canonical: "__target_depot__" },
+  { pattern: /\b(ports?|harbors?|docks?|piers?|terminals?|terminal|terminali|naval\s*berths?|maritime|naval|liman|iskele|riht[i]m|deniz\s*ussu|sahil)\b/gi, canonical: "__target_port__" },
+  { pattern: /\b(depots?|warehouses?|munitions?|ammunition|storage|armaments?|depo|depolar[i]?|muhimmat\s*deposu|lojistik\s*depo|ambar|silah|cephanelik)\b/gi, canonical: "__target_depot__" },
   { pattern: /\b(radars?|sensors?|surveillance|tracking|radar\s*istasyonu|erken\s*uyar[i])\b/gi, canonical: "__target_radar__" },
   { pattern: /\b(convoys?|transports?|columns?|trucks?|shipments?|konvoy|lojistik\s*arac|sevkiyat|tas[i]yan)\b/gi, canonical: "__target_convoy__" },
-  { pattern: /\b(pipelines?|refiner(?:y|ies)|petroleum|gas\s*pipeline|oil\s*terminal|boru\s*hatt[i]|rafineri|petrol|dogalgaz)\b/gi, canonical: "__target_energy__" },
+  { pattern: /\b(pipelines?|refiner(?:y|ies)|petroleum|gas\s*pipeline|oil\s*terminal|oil|fuel|petrol|dogalgaz|yakit|enerji|boru\s*hatt[i]|rafineri)\b/gi, canonical: "__target_energy__" },
   { pattern: /\b(satellites?|orbits?|orbital|exo-atmospheric|uydu|yorunge)\b/gi, canonical: "__target_satellite__" },
   { pattern: /\b(facility|facilities|installation|installations?|complex|base|headquarters|barracks|tesis|tesisler|karargah|askeri\s*us|kisl[a|e])\b/gi, canonical: "__target_facility__" },
 
@@ -482,7 +482,7 @@ export function evaluatePairwiseCorroboration(
     }
   }
 
-  if (hasTargetConflict && (distKm > 2 || distKm === Infinity)) {
+  if (hasTargetConflict) {
     return {
       isMatch: false,
       geographicDistanceKm: distKm === Infinity ? null : distKm,
@@ -520,7 +520,7 @@ export function evaluatePairwiseCorroboration(
   let isMatch: boolean;
   if (distKm !== Infinity) {
     if (distKm <= 2) {
-      isMatch = sim >= 0.05 || sharedCount >= 1;
+      isMatch = !hasTargetConflict && (sim >= 0.05 || sharedCount >= 1);
     } else if (distKm <= 10) {
       isMatch = !hasTargetConflict && (sim >= 0.08 || sharedCount >= 2);
     } else if (distKm <= 25) {
@@ -676,9 +676,15 @@ export function clusterRecentEvents(hours = 24): CorroboratedCluster[] {
     let confidence: CorroboratedCluster["confidence"] = "LOW";
     let confidenceScore = 0.3;
 
-    if (hasSpeculative && independentSourceCount < 2) {
-      confidence = "UNVERIFIED";
-      confidenceScore = 0.2;
+    if (hasSpeculative) {
+      // Epistemic Safety: Unconfirmed/speculative claims are never elevated to HIGH confidence
+      if (independentSourceCount >= 2) {
+        confidence = "MEDIUM";
+        confidenceScore = 0.55;
+      } else {
+        confidence = "UNVERIFIED";
+        confidenceScore = 0.25;
+      }
     } else if (independentSourceCount >= 3) {
       confidence = "HIGH";
       confidenceScore = 0.85;
