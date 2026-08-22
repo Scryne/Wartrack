@@ -1,3 +1,10 @@
+// no-misleading-character-class fires because the Devanagari and Arabic ranges
+// include combining marks, which the rule assumes are meant to be matched as
+// part of a grapheme. Here they are not: this is a presence test for "any
+// codepoint from a script Turkish output must never contain", and a lone
+// combining mark from one of those scripts is exactly as disqualifying as a
+// base character. Matching it individually is the intent.
+// eslint-disable-next-line no-misleading-character-class
 const DISALLOWED_SCRIPT_RANGES = /[\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF]/u;
 const ALLOWED_OUTPUT_CHARS = /[^\p{L}\p{N}\s.,;:!?()\[\]{}"'`“”‘’\-_/+%&@#*=<>|~^$€£¥°…•◈↗]/gu;
 const TURKISH_HINT_WORDS = [

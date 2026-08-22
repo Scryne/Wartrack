@@ -2,8 +2,16 @@ import { Router } from "express";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import db from "../db";
 import { sanitizeAiOutput, validateTurkishOutput } from "../lib/languageGuard";
+import { sqliteIsoNow } from "../lib/time";
+import { rateLimit } from "../lib/rateLimit";
+import { requireApiKey } from "../lib/auth";
+import { asyncRoute } from "../lib/http";
 
 const briefRouter = Router();
+
+// briefRouter is mounted separately from apiRouter (at /api/brief), so it
+// needs its own gate. POST /api/brief is the cost-amplification path.
+briefRouter.use(requireApiKey);
 
 interface BriefArticleRow {
   id: number;
@@ -17,7 +25,7 @@ interface BriefArticleRow {
 const getRecentArticlesStmt = db.prepare(`
   SELECT id, title, description, source, pubDate, aiSummary
   FROM articles
-  WHERE pubDate > datetime('now', '-6 hours')
+  WHERE pubDate > ${sqliteIsoNow("-6 hours")}
   ORDER BY pubDate DESC
   LIMIT 80
 `);
@@ -106,16 +114,33 @@ async function ollamaBrief(prompt: string): Promise<string> {
   }
 }
 
+/**
+ * Gemini is the *fallback* provider, reached only after Ollama has already
+ * spent up to 45s failing. Without its own deadline a hung call would hold the
+ * HTTP request open indefinitely — ollamaBrief() aborts, this one did not.
+ */
+const GEMINI_TIMEOUT_MS = 45_000;
+
 async function geminiBrief(prompt: string): Promise<string> {
   const model = getGeminiModel();
   if (!model) throw new Error("Gemini API key not configured");
 
-  const result = await model.generateContent({
-    systemInstruction: BRIEF_SYSTEM_PROMPT,
-    contents: [{ role: "user", parts: [{ text: prompt }] }]
-  } as any);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
 
-  return result.response.text().trim();
+  try {
+    const result = await model.generateContent(
+      {
+        systemInstruction: BRIEF_SYSTEM_PROMPT,
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
+      },
+      { signal: controller.signal, timeout: GEMINI_TIMEOUT_MS }
+    );
+
+    return result.response.text().trim();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function normalizeBrief(text: string): string {
@@ -214,8 +239,17 @@ function buildRuleBasedBrief(allArticles: BriefArticleRow[]): string {
     if (topicCount.diplomasi > 0) bullets.push("Diplomatik başlıklar sahadaki askeri baskıyı dengeleyecek güçte görünmüyor.");
     if (topicCount.sivil > 0) bullets.push("Sivil etki riski halen öne çıkan ana kırılganlık alanı olarak izleniyor.");
   }
-  while (bullets.length < 3) {
-    bullets.push("Kaynak akışı izlenmeye devam ediyor; teyitli yeni veri geldikçe değerlendirme güncellenecek.");
+  // Distinct filler text: pushing one identical string repeatedly produced
+  // byte-identical bullets, which the panel then used as React keys.
+  const FILLER_BULLETS = [
+    "Kaynak akışı izlenmeye devam ediyor; teyitli yeni veri geldikçe değerlendirme güncellenecek.",
+    "Bağımsız kaynaklardan çapraz doğrulama beklendiği için değerlendirme temkinli tutuldu.",
+    "Mevcut veri hacmi sınırlı; tablo yeni başlıklarla birlikte yeniden değerlendirilecek."
+  ];
+  let fillerIndex = 0;
+  while (bullets.length < 3 && fillerIndex < FILLER_BULLETS.length) {
+    bullets.push(FILLER_BULLETS[fillerIndex]);
+    fillerIndex++;
   }
 
   return `${BRIEF_HEADINGS.summary}
@@ -274,7 +308,15 @@ ${BRIEF_HEADINGS.trend}
 Model çıktısı format dışı geldiğinden trend analizi güvenli varsayım modunda tutuldu.`;
 }
 
-briefRouter.post("/", async (req, res) => {
+// Each uncached call runs an LLM request, and { force: true } bypasses the
+// 90s cache entirely, so this is the cost-amplification path (billed Gemini).
+const briefRateLimit = rateLimit({
+  max: 10,
+  windowMs: 60_000,
+  message: "Durum özeti istekleri sınırlandırıldı. Lütfen biraz sonra tekrar deneyin."
+});
+
+briefRouter.post("/", briefRateLimit, asyncRoute(async (req, res) => {
   const articles = getRecentArticlesStmt.all() as BriefArticleRow[];
   const force = Boolean(req.body?.force);
   const cacheKey = makeBriefCacheKey(articles);
@@ -359,6 +401,6 @@ Sadece bu formatı kullan. Başka hiçbir şey ekleme.
       return res.json(response);
     }
   }
-});
+}));
 
 export default briefRouter;

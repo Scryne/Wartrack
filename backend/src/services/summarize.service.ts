@@ -74,6 +74,8 @@ export interface SummarizeResult {
 }
 
 const MAX_QUEUE = 30;
+/** Hard ceiling on how long a caller can be blocked waiting for a summary. */
+const SUMMARIZE_TIMEOUT_MS = 120_000;
 const queue: QueueItem[] = [];
 let processing = false;
 
@@ -100,41 +102,82 @@ async function processQueue(): Promise<void> {
   if (processing) return;
   processing = true;
 
-  while (queue.length > 0) {
-    const item = queue.shift()!;
+  // try/finally: without it, a throw anywhere below leaves processing === true
+  // forever. Every later enqueue would then return at the guard above, the
+  // queue would never drain, and every pending promise would hang unresolved.
+  try {
+    while (queue.length > 0) {
+      const item = queue.shift()!;
 
-    // Wait for rate token
-    while (!consumeToken()) {
-      await new Promise((r) => setTimeout(r, 3_000));
+      // Per-item try/catch: one failed article must not abort the batch or
+      // strand its caller.
+      try {
+        // Wait for rate token
+        while (!consumeToken()) {
+          await new Promise((r) => setTimeout(r, 3_000));
+        }
+
+        const rawResult = await doSummarize(item.text);
+        const result: SummarizeResult = {
+          ...rawResult,
+          summary: cleanSummary(rawResult.summary)
+        };
+
+        // Save to DB
+        if (result.model !== "none") {
+          updateAiSummaryStmt.run(result.summary, item.articleId);
+        }
+
+        item.resolve(result);
+      } catch (err) {
+        console.error(`[AI] Kuyruk hatası (makale #${item.articleId}):`, err);
+        item.resolve({ summary: "Özet alınamadı", model: "none" });
+      }
     }
-
-    const rawResult = await doSummarize(item.text);
-    const result: SummarizeResult = {
-      ...rawResult,
-      summary: cleanSummary(rawResult.summary)
-    };
-
-    // Save to DB
-    if (result.model !== "none") {
-      updateAiSummaryStmt.run(result.summary, item.articleId);
-    }
-
-    item.resolve(result);
+  } finally {
+    processing = false;
   }
-
-  processing = false;
 }
 
 export function enqueueSummarize(articleId: number, text: string): Promise<SummarizeResult> {
   return new Promise((resolve) => {
+    // Already queued for this article: reuse the in-flight request rather than
+    // stacking duplicates. Overlapping cron runs select the same unsummarized
+    // rows, since aiSummary is only written once summarisation completes.
+    const pending = queue.find((item) => item.articleId === articleId);
+    if (pending) {
+      const previousResolve = pending.resolve;
+      pending.resolve = (value) => {
+        previousResolve(value);
+        resolve(value);
+      };
+      return;
+    }
+
     // If queue full, drop oldest
     if (queue.length >= MAX_QUEUE) {
       const dropped = queue.shift()!;
       dropped.resolve({ summary: "Özet alınamadı", model: "none" });
     }
 
-    queue.push({ articleId, text, resolve });
-    processQueue();
+    let settled = false;
+    const settle = (value: SummarizeResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+
+    // Bound the wait so an HTTP caller is never held open indefinitely.
+    const timer = setTimeout(() => {
+      const index = queue.findIndex((item) => item.resolve === settle);
+      if (index >= 0) queue.splice(index, 1);
+      settle({ summary: "Özet alınamadı", model: "none" });
+    }, SUMMARIZE_TIMEOUT_MS);
+    timer.unref?.();
+
+    queue.push({ articleId, text, resolve: settle });
+    void processQueue();
   });
 }
 
@@ -188,22 +231,38 @@ export async function geminiSummarize(text: string): Promise<string> {
   return geminiSummarizeWithMode(text, false);
 }
 
+/**
+ * Matches ollamaSummarize's 30s abort. Without a deadline a hung Gemini call
+ * blocks processQueue()'s `await`, and since that loop is serial, one stuck
+ * request stalls every other queued article behind it.
+ */
+const GEMINI_TIMEOUT_MS = 30_000;
+
 async function geminiSummarizeWithMode(text: string, strict: boolean): Promise<string> {
   const model = getGeminiModel();
   if (!model) throw new Error("Gemini API key not configured");
   const userText = `Haber:\n${text}`;
 
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: userText }] }],
-    generationConfig: {
-      temperature: strict ? 0.1 : 0.2,
-      topP: strict ? 0.85 : 0.9,
-      maxOutputTokens: 200
-    },
-    systemInstruction: strict ? STRICT_RETRY_PROMPT : SYSTEM_PROMPT
-  } as any);
-  const response = result.response;
-  return response.text().trim();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+  try {
+    const result = await model.generateContent(
+      {
+        contents: [{ role: "user", parts: [{ text: userText }] }],
+        generationConfig: {
+          temperature: strict ? 0.1 : 0.2,
+          topP: strict ? 0.85 : 0.9,
+          maxOutputTokens: 200
+        },
+        systemInstruction: strict ? STRICT_RETRY_PROMPT : SYSTEM_PROMPT
+      },
+      { signal: controller.signal, timeout: GEMINI_TIMEOUT_MS }
+    );
+    return result.response.text().trim();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 let geminiBlockedUntil = 0;
@@ -345,19 +404,9 @@ const updateAiSummaryStmt = db.prepare(`
   UPDATE articles SET aiSummary = ? WHERE id = ?
 `);
 
-db.prepare(`
-  UPDATE articles
-  SET aiSummary = NULL
-  WHERE aiSummary LIKE '%â€%'
-     OR aiSummary LIKE '%&#%'
-     OR aiSummary LIKE '%\\u00%'
-     OR LENGTH(aiSummary) < 20
-     OR aiSummary LIKE '%özetlemek%'
-     OR aiSummary LIKE '%istiyorsanız%'
-     OR aiSummary LIKE '%yazabilirsiniz%'
-     OR aiSummary LIKE '%Bu metni%'
-`).run();
-console.info('[AI] Bozuk özetler temizlendi.');
+// The one-shot cleanup of corrupt aiSummary values now lives in migration 4.
+// It used to run here at module scope, i.e. on every import, which also
+// re-nulled every legitimately short summary on each restart.
 
 const getUnsummarizedStmt = db.prepare(`
   SELECT id, title, description

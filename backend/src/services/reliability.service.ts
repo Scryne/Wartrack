@@ -13,15 +13,17 @@ export interface ReliabilityResult {
   insufficientData: boolean;
 }
 
+// Keys must track RSS_SOURCES names: an unlisted source silently falls back to
+// 52, which would down-rank it against every configured peer.
 const SOURCE_BASELINE: Record<string, number> = {
-  "Reuters World": 82,
-  "AP News": 80,
   "BBC World": 79,
+  "NPR World": 76, // replaced AP News (80) — see rss.service.ts
   "Guardian World": 75,
+  "CBS News World": 74, // replaced Reuters World (82) — see rss.service.ts
   "France24 EN": 72,
   "DW World": 71,
   "Al Jazeera": 70,
-  "Times of Israel": 66,
+  "Ynetnews": 66, // replaced Times of Israel (66) — see rss.service.ts
   "Jerusalem Post": 63,
   "Middle East Eye": 58,
   "Iran Int'l": 57,
