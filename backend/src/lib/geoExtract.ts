@@ -43,19 +43,33 @@ const GEO_MAP: Record<string, [number, number]> = {
   cairo: [30.0444, 31.2357],
   suez: [29.9668, 32.5498],
   cyprus: [35.1264, 33.4299],
-  pakistan: [30.3753, 69.3451]
+  pakistan: [30.3753, 69.3451],
+  'bab el-mandeb': [12.5833, 43.3333],
+  mandeb: [12.5833, 43.3333],
+  tartus: [34.8959, 35.8866],
+  latakia: [35.5317, 35.7909],
+  eilat: [29.5581, 34.9482],
+  ashdod: [31.8044, 34.6553],
+  dimona: [31.0700, 35.0300]
 };
 
+// Longest key first, so "tel aviv" wins over "israel" and "red sea" over "gulf".
+// Sorted once at module load rather than on every call.
+const GEO_ENTRIES = Object.entries(GEO_MAP).sort((a, b) => b[0].length - a[0].length);
+
+/**
+ * Resolve a place name in `text` to its gazetteer coordinate.
+ *
+ * Returns the true coordinate. This used to add ±0.6° of random jitter, which
+ * displaced pins by up to ~66km, made ingestion non-deterministic, and was
+ * compounded by a second randomisation pass in rss.service. Visual de-overlap
+ * belongs in the map layer, not in the stored record.
+ */
 export function extractGeoFromText(text: string): [number, number] | null {
   const lower = text.toLowerCase();
-  const sorted = Object.entries(GEO_MAP).sort((a, b) => b[0].length - a[0].length);
-  for (const [key, coords] of sorted) {
+  for (const [key, coords] of GEO_ENTRIES) {
     if (lower.includes(key)) {
-      const jitter: [number, number] = [
-        (Math.random() - 0.5) * 1.2,
-        (Math.random() - 0.5) * 1.2
-      ];
-      return [coords[0] + jitter[0], coords[1] + jitter[1]];
+      return [coords[0], coords[1]];
     }
   }
   return null;
