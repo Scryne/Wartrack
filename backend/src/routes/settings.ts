@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import db from "../db";
+import { sqliteIsoNow } from "../lib/time";
+import { rateLimit } from "../lib/rateLimit";
 
 const router = Router();
 
@@ -11,8 +13,8 @@ const getOneStmt = db.prepare("SELECT key, value, updatedAt FROM settings WHERE 
 
 const upsertStmt = db.prepare(`
   INSERT INTO settings (key, value, updatedAt)
-  VALUES (@key, @value, datetime('now'))
-  ON CONFLICT(key) DO UPDATE SET value = @value, updatedAt = datetime('now')
+  VALUES (@key, @value, ${sqliteIsoNow()})
+  ON CONFLICT(key) DO UPDATE SET value = @value, updatedAt = ${sqliteIsoNow()}
 `);
 
 /* ───────────────── SEED DEFAULTS ───────────────── */
@@ -26,6 +28,50 @@ const DEFAULTS: Record<string, string> = {
   "map.tile": "cartodbDark",
   "threat.sound": "false",
 };
+
+/**
+ * Only known keys are writable. Previously any key was accepted, so the table
+ * grew without bound and rss.interval / ai.interval — which drive the cron —
+ * were settable by any anonymous caller.
+ */
+const ALLOWED_KEYS = new Set(Object.keys(DEFAULTS));
+
+const MAX_VALUE_LENGTH = 512;
+
+function validateSetting(key: string, rawValue: unknown): { value?: string; error?: string } {
+  if (!ALLOWED_KEYS.has(key)) {
+    return { error: `Unknown setting key: ${key}` };
+  }
+  if (rawValue === undefined || rawValue === null) {
+    return { error: "value is required." };
+  }
+  if (typeof rawValue === "object") {
+    return { error: "value must be a scalar." };
+  }
+
+  const value = String(rawValue);
+  if (value.length > MAX_VALUE_LENGTH) {
+    return { error: "value is too long." };
+  }
+
+  // Interval keys feed the scheduler; clamp them to the same range
+  // getNumberSetting enforces so a bad write cannot wedge the cron.
+  if (key === "rss.interval" || key === "ai.interval") {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 60) {
+      return { error: `${key} must be a number between 1 and 60.` };
+    }
+    return { value: String(Math.floor(parsed)) };
+  }
+
+  if (key === "ai.model" && !["ollama", "gemini"].includes(value.toLowerCase())) {
+    return { error: "ai.model must be 'ollama' or 'gemini'." };
+  }
+
+  return { value };
+}
+
+const settingsWriteRateLimit = rateLimit({ max: 30, windowMs: 60_000 });
 
 const seedDefaults = db.transaction(() => {
   for (const [key, value] of Object.entries(DEFAULTS)) {
@@ -55,44 +101,60 @@ router.get("/", (_req: Request, res: Response) => {
 
 /* ───────────────── PUT /api/settings/:key ───────────────── */
 
-router.put("/:key", (req: Request, res: Response) => {
+router.put("/:key", settingsWriteRateLimit, (req: Request, res: Response) => {
   try {
     const key = req.params.key;
-    const { value } = req.body;
+    const validation = validateSetting(key, req.body?.value);
 
-    if (value === undefined || value === null) {
-      res.status(400).json({ message: "value is required." });
+    if (validation.value === undefined) {
+      res.status(400).json({ message: validation.error });
       return;
     }
 
-    upsertStmt.run({ key, value: String(value) });
+    upsertStmt.run({ key, value: validation.value });
 
     const io = req.app.get("io");
-    if (io) io.emit("settings:updated", { key, value: String(value) });
+    if (io) io.emit("settings:updated", { key, value: validation.value });
 
-    res.json({ ok: true, key, value: String(value) });
+    res.json({ ok: true, key, value: validation.value });
   } catch (err) {
     console.error("[SETTINGS] PUT error:", err);
     res.status(500).json({ message: "Setting could not be updated." });
   }
 });
 
-router.put("/", (req: Request, res: Response) => {
+router.put("/", settingsWriteRateLimit, (req: Request, res: Response) => {
   try {
-    if (typeof req.body !== "object" || req.body === null) {
+    if (typeof req.body !== "object" || req.body === null || Array.isArray(req.body)) {
       res.status(400).json({ message: "Body must be an object." });
       return;
     }
 
     const payload = req.body as Record<string, unknown>;
+    const accepted: Record<string, string> = {};
+
     for (const [key, value] of Object.entries(payload)) {
-      upsertStmt.run({ key, value: String(value) });
+      const validation = validateSetting(key, value);
+      if (validation.value === undefined) {
+        res.status(400).json({ message: validation.error });
+        return;
+      }
+      accepted[key] = validation.value;
     }
 
-    const io = req.app.get("io");
-    if (io) io.emit("settings:updated", payload);
+    // Validate everything before writing anything, so a bad key in the middle
+    // of a bulk update cannot leave a partially-applied change.
+    const applyAll = db.transaction(() => {
+      for (const [key, value] of Object.entries(accepted)) {
+        upsertStmt.run({ key, value });
+      }
+    });
+    applyAll();
 
-    res.json({ ok: true, updated: Object.keys(payload).length });
+    const io = req.app.get("io");
+    if (io) io.emit("settings:updated", accepted);
+
+    res.json({ ok: true, updated: Object.keys(accepted).length });
   } catch (err) {
     console.error("[SETTINGS] BULK PUT error:", err);
     res.status(500).json({ message: "Settings could not be updated." });
