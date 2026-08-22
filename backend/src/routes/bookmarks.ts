@@ -21,6 +21,12 @@ router.get('/', (_req, res) => {
   }
 });
 
+// Prepared once rather than on each request; better-sqlite3 compiles on
+// prepare(), so building these per call paid the compile cost every time.
+const articleExistsStmt = db.prepare('SELECT 1 FROM articles WHERE id = ?');
+const insertBookmarkStmt = db.prepare('INSERT OR IGNORE INTO bookmarks(articleId) VALUES (?)');
+const deleteBookmarkStmt = db.prepare('DELETE FROM bookmarks WHERE articleId = ?');
+
 router.post('/', (req, res) => {
   const articleId = Number((req.body as { articleId?: unknown })?.articleId);
   if (!Number.isInteger(articleId) || articleId <= 0) {
@@ -28,7 +34,15 @@ router.post('/', (req, res) => {
   }
 
   try {
-    db.prepare('INSERT OR IGNORE INTO bookmarks(articleId) VALUES (?)').run(articleId);
+    // SQLite's OR IGNORE does not suppress foreign-key violations, only
+    // uniqueness ones, so bookmarking a nonexistent article threw and surfaced
+    // as a 500 — an internal error for what is plainly a bad request. Articles
+    // are pruned after 7 days, so a stale client hits this routinely.
+    if (!articleExistsStmt.get(articleId)) {
+      return res.status(404).json({ message: 'Article not found.' });
+    }
+
+    insertBookmarkStmt.run(articleId);
     return res.status(201).json({ success: true });
   } catch (err) {
     console.error('[BOOKMARKS] POST /api/bookmarks error:', err);
@@ -43,8 +57,10 @@ router.delete('/:articleId', (req, res) => {
   }
 
   try {
-    db.prepare('DELETE FROM bookmarks WHERE articleId = ?').run(articleId);
-    return res.json({ success: true });
+    const result = deleteBookmarkStmt.run(articleId);
+    // `removed` distinguishes a real deletion from a no-op. The route stays
+    // idempotent (deleting twice is still a 200), but the caller can now tell.
+    return res.json({ success: true, removed: result.changes > 0 });
   } catch (err) {
     console.error('[BOOKMARKS] DELETE /api/bookmarks/:articleId error:', err);
     return res.status(500).json({ message: 'Bookmark could not be deleted.' });
