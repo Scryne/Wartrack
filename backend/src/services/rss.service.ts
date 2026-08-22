@@ -4,6 +4,7 @@ import { extractGeoFromText } from '../lib/geoExtract';
 import { computeReliability } from './reliability.service';
 import { validateTurkishOutput } from '../lib/languageGuard';
 import { sqliteIsoNow, toIsoOrNull } from '../lib/time';
+import { validateSafeUrl } from '../lib/ssrfGuard';
 
 export interface RssSource {
   name: string;
@@ -225,6 +226,11 @@ const FEED_FETCH_TIMEOUT_MS = 15_000;
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
 
 async function fetchFeedText(url: string, source: RssSource, attempt: number): Promise<string> {
+  const safeCheck = await validateSafeUrl(url);
+  if (!safeCheck.valid) {
+    throw new Error(`SSRF Blocked: URL for ${source.name} is unsafe (${safeCheck.reason})`);
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FEED_FETCH_TIMEOUT_MS);
 

@@ -59,7 +59,7 @@ function getSharedSecret(): string {
  * timingSafeEqual cannot throw on a length mismatch and the comparison does
  * not leak the secret's length.
  */
-function secretsMatch(provided: string, expected: string): boolean {
+export function secretsMatch(provided: string, expected: string): boolean {
   const providedHash = createHash("sha256").update(provided, "utf8").digest();
   const expectedHash = createHash("sha256").update(expected, "utf8").digest();
   return timingSafeEqual(providedHash, expectedHash);
@@ -79,17 +79,17 @@ export function assertSharedSecretConfigured(): void {
     );
   }
 
-  if (secret.length < MIN_SECRET_LENGTH) {
-    throw new Error(
-      `API_SHARED_SECRET must be at least ${MIN_SECRET_LENGTH} characters ` +
-        `(got ${secret.length}).`
-    );
-  }
-
   if (KNOWN_PLACEHOLDER_SECRETS.has(secret.toLowerCase())) {
     throw new Error(
       "API_SHARED_SECRET is a known placeholder value from the repository and " +
         "is public. Generate a real one (`openssl rand -hex 32`) and put it in .env."
+    );
+  }
+
+  if (secret.length < MIN_SECRET_LENGTH) {
+    throw new Error(
+      `API_SHARED_SECRET must be at least ${MIN_SECRET_LENGTH} characters ` +
+        `(got ${secret.length}).`
     );
   }
 }
