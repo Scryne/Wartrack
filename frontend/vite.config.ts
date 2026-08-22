@@ -1,4 +1,8 @@
-import { defineConfig } from "vite";
+// vitest/config, not vite: the `test` block below is a Vitest extension of
+// Vite's config type. It used to typecheck only because the test files were in
+// the same program and pulled in Vitest's type augmentation as a side effect —
+// excluding them from the build config removed it and broke `tsc`.
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({

@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Lets a red pipeline be re-run without an empty commit.
+  workflow_dispatch:
+
+# A new push to the same branch makes the in-flight run obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned rather than "lts/*": a silent major bump is exactly the kind of
+  # change CI exists to catch, and better-sqlite3 ships prebuilt binaries per
+  # ABI version. The README requires Node 18+; 20 is the floor actually tested.
+  NODE_VERSION: "20"
+  PNPM_VERSION: "10.30.3"
+
+jobs:
+  # ── Backend ────────────────────────────────────────────────────────────
+  # Split from the frontend so a failure names which side broke, and so the
+  # two run in parallel.
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      # --frozen-lockfile: fail if the lockfile and package.json disagree,
+      # rather than silently resolving a different tree than a developer has.
+      - name: Install
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+
+      # better-sqlite3 is a native module. pnpm 10 gates build scripts behind
+      # the allowBuilds list in pnpm-workspace.yaml; if that ever stops taking
+      # effect the binding is missing and every later step fails confusingly.
+      # Checking here turns that into one clear error.
+      - name: Verify native bindings
+        working-directory: backend
+        run: node -e "require('better-sqlite3'); console.log('better-sqlite3 loaded')"
+
+      - name: Lint
+        working-directory: backend
+        run: pnpm lint
+
+      # Uses tsconfig.eslint.json, which spans src *and* test. tsconfig.json
+      # includes only src, so the build config alone leaves the suite
+      # unchecked.
+      - name: Typecheck
+        working-directory: backend
+        run: pnpm typecheck
+
+      - name: Tests
+        working-directory: backend
+        run: pnpm test:run
+        env:
+          # The suite sets this per-file, but an unset value would make a
+          # boot-path test's failure mode confusing rather than obvious.
+          API_SHARED_SECRET: ci-shared-secret-0123456789abcdef
+
+      - name: Build
+        working-directory: backend
+        run: pnpm build
+
+      # Applies every migration to an empty database — the path a new install
+      # takes, which the suite (seeded from a legacy schema) does not cover.
+      - name: Migration validation
+        working-directory: backend
+        run: pnpm migrate:check
+
+      # Boots the built server and drives the security-relevant paths over real
+      # HTTP. Guards against the case where everything passes in-process but
+      # the assembled application does not actually start.
+      - name: Smoke test
+        working-directory: backend
+        run: node ../.github/scripts/smoke.mjs
+        env:
+          API_SHARED_SECRET: ci-shared-secret-0123456789abcdef
+          SMOKE_PORT: "3199"
+
+  # ── Frontend ───────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        working-directory: frontend
+        run: pnpm lint
+
+      - name: Typecheck
+        working-directory: frontend
+        run: pnpm typecheck
+
+      - name: Tests
+        working-directory: frontend
+        run: pnpm test:run
+
+      - name: Build
+        working-directory: frontend
+        run: pnpm build
+
+  # ── Secret hygiene ─────────────────────────────────────────────────────
+  # Separate job: it needs no toolchain and should report independently of
+  # whether the code compiles.
+  secrets:
+    name: Secret hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: No committed secrets or databases
+        run: node .github/scripts/checkSecrets.mjs

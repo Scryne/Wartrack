@@ -12,13 +12,16 @@ export default {
         "text-1": "var(--text-1)",
         "text-2": "var(--text-2)",
         "text-3": "var(--text-3)",
-        accent: "var(--accent)",
+        // Channel form so Tailwind can build alpha modifiers
+        // (bg-accent/15, bg-success/10, bg-danger/10). A bare var() colour
+        // silently drops the /NN modifier instead of emitting a rule.
+        accent: "rgb(var(--accent-rgb) / <alpha-value>)",
         "accent-dim": "var(--accent-dim)",
-        danger: "var(--danger)",
+        danger: "rgb(var(--danger-rgb) / <alpha-value>)",
         "danger-dim": "var(--danger-dim)",
-        warn: "var(--warn)",
+        warn: "rgb(var(--warn-rgb) / <alpha-value>)",
         "warn-dim": "var(--warn-dim)",
-        success: "var(--success)",
+        success: "rgb(var(--success-rgb) / <alpha-value>)",
         purple: "var(--purple)",
         orange: "var(--orange)",
         "border-default": "var(--border)",
