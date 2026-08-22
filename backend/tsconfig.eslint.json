@@ -1,0 +1,20 @@
+{
+  // tsconfig.json intentionally scopes `include` to src, because rootDir/outDir
+  // drive the production build and test files must not land in dist.
+  //
+  // The consequence was that `tsc -p tsconfig.json --noEmit` never typechecked
+  // the test suite at all, and type-aware lint rules could not parse it either
+  // ("was not found by the project service"). This config exists solely to give
+  // both tools a project that spans everything.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // rootDir is "src" in the base config, which drives the dist layout. Kept
+    // there it makes every test file a TS6059 ("not under rootDir") error, so
+    // it is widened here. Safe precisely because noEmit is on: nothing about
+    // the build output is decided by this file.
+    "rootDir": ".",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src", "test"]
+}

@@ -1,0 +1,5 @@
+# pnpm >= 10 reads build-script approvals from here. The "pnpm" field in
+# package.json is ignored by pnpm 11, so without this file esbuild's
+# platform binary is never installed and vite cannot run.
+allowBuilds:
+  esbuild: true
