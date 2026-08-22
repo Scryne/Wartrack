@@ -27,7 +27,16 @@ if (!SECRET) {
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "wartracker-smoke-"));
 const dbPath = path.join(tmpDir, "smoke.db");
 
-const server = spawn(process.execPath, ["dist/index.js"], {
+const serverCwd = fs.existsSync("dist/index.js")
+  ? process.cwd()
+  : fs.existsSync("backend/dist/index.js")
+    ? path.join(process.cwd(), "backend")
+    : process.cwd();
+
+const serverScript = path.resolve(serverCwd, "dist/index.js");
+
+const server = spawn(process.execPath, [serverScript], {
+  cwd: serverCwd,
   env: {
     ...process.env,
     PORT: String(PORT),
