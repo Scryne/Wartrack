@@ -8,6 +8,7 @@ import AiBriefPanel from './AiBriefPanel';
 import { NUCLEAR_SITES } from '../data/nuclearSites';
 import { SAM_SYSTEMS } from '../data/samSystems';
 import { showConfirmToast } from '../lib/toast';
+import { apiFetch } from '../lib/api';
 import { useBookmarkStore } from '../stores/useBookmarkStore';
 import { useMapStore } from '../stores/useMapStore';
 import { useDrawStore } from '../stores/useDrawStore';
@@ -80,7 +81,7 @@ function MapPanel({
   }, [openDrawer]);
 
   useEffect(() => {
-    void fetch('/api/pins')
+    void apiFetch('/api/pins')
       .then((r) => r.json())
       .then((list: Pin[]) => setPins(list))
       .catch(() => undefined);
@@ -107,7 +108,10 @@ function MapPanel({
   }, [pinDrawerOpen, showBrief, onCloseBrief]);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    // No mapRef guard: this only mutates a LayerGroup held in a ref, which is
+    // valid whether or not it is attached to a map (MapBootstrap attaches it
+    // independently). The old guard could bail before MapBootstrap mounted and,
+    // because the effect only re-runs on [pins, ...], never retry.
     manualPinsLayer.current.clearLayers();
     pins.forEach((pin) => {
       if (legendFilters.length > 0 && !legendFilters.includes(pin.category)) return;
@@ -148,36 +152,40 @@ function MapPanel({
         </div>
       `;
 
-      marker.bindPopup(popupEl, { minWidth: 240, closeButton: true, keepInView: true });
-
-      marker.on('popupopen', () => {
-        document.getElementById(`delete-pin-${pin.id}`)?.addEventListener(
-          'click',
-          async () => {
-            const confirmed = await showConfirmToast('Bu pini silmek istediginden emin misin?');
-            if (!confirmed) return;
-            marker.closePopup();
+      // Listeners are attached once, here, to the element bindPopup owns.
+      // Attaching them on every 'popupopen' with { once: true } accumulated a
+      // new listener per open/close cycle (a `once` listener only detaches when
+      // it fires), so clicking Sil after N cycles fired N delete requests.
+      // The listener itself must return void, not a promise: addEventListener
+      // ignores what a handler returns, so an async handler's rejection has
+      // nowhere to go. showConfirmToast() is awaited inside, so wrapping the
+      // whole thing keeps its failure from becoming an unhandled rejection.
+      popupEl.querySelector(`#delete-pin-${pin.id}`)?.addEventListener('click', () => {
+        void (async () => {
+          const confirmed = await showConfirmToast('Bu pini silmek istediginden emin misin?');
+          if (!confirmed) return;
+          marker.closePopup();
+          try {
             await useMapStore.getState().deletePin(pin.id);
-          },
-          { once: true }
-        );
-
-        document.getElementById(`edit-pin-${pin.id}`)?.addEventListener(
-          'click',
-          () => {
-            marker.closePopup();
-            useMapStore.getState().openEditDrawer(pin);
-          },
-          { once: true }
-        );
+          } catch {
+            // Already removed; the socket pin:deleted event reconciles state.
+          }
+        })();
       });
+
+      popupEl.querySelector(`#edit-pin-${pin.id}`)?.addEventListener('click', () => {
+        marker.closePopup();
+        useMapStore.getState().openEditDrawer(pin);
+      });
+
+      marker.bindPopup(popupEl, { minWidth: 240, closeButton: true, keepInView: true });
 
       marker.addTo(manualPinsLayer.current);
     });
   }, [pins, legendFilters, hoveredLegendKey]);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    // See the manual-pin effect above: no mapRef guard needed or wanted.
     const layer = newsPinsLayerRef.current;
     layer.clearLayers();
       newsPins.forEach((pin) => {

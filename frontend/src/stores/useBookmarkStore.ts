@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Article } from '../types';
+import { apiFetch } from '../lib/api';
 
 interface BookmarkState {
   ids: Set<number>;
@@ -17,7 +18,7 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
 
   fetchBookmarks: async () => {
     try {
-      const articles = await fetch('/api/bookmarks').then((r) => r.json() as Promise<Article[]>);
+      const articles = await apiFetch('/api/bookmarks').then((r) => r.json() as Promise<Article[]>);
       set({
         articles,
         ids: new Set(articles.map((article) => article.id))
@@ -30,7 +31,8 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
   toggle: async (articleId) => {
     const saved = get().ids.has(articleId);
     const method = saved ? 'DELETE' : 'POST';
-    const url = saved ? `/api/bookmarks/${articleId}` : '/api/bookmarks';
+    // A path, not an absolute URL: apiFetch resolves it via apiUrl internally.
+    const path = saved ? `/api/bookmarks/${articleId}` : '/api/bookmarks';
     const init = saved
       ? { method }
       : {
@@ -39,7 +41,7 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
           body: JSON.stringify({ articleId })
         };
 
-    const res = await fetch(url, init);
+    const res = await apiFetch(path, init);
     if (!res.ok) {
       throw new Error('Bookmark istegi basarisiz');
     }

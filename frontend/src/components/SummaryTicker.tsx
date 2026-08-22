@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { hasDisallowedScript, sanitizeTextOutput } from '../lib/textGuard';
+import { apiFetch } from '../lib/api';
 
 interface TickerSummary {
   id: number;
@@ -15,7 +16,7 @@ function SummaryTicker() {
 
   const fetchLatest = useCallback(async () => {
     try {
-      const response = await fetch('/api/summarize/latest?limit=5');
+      const response = await apiFetch('/api/summarize/latest?limit=5');
       if (!response.ok) return;
       const data = (await response.json()) as TickerSummary[];
       if (Array.isArray(data)) {

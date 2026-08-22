@@ -1,8 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useWatchlistStore } from '../stores/useWatchlistStore';
 import { showToast } from './Toast';
-import { apiUrl } from '../lib/api';
+import { ApiKeyError, apiFetch } from '../lib/api';
+import { useAuthStore } from '../stores/useAuthStore';
+import { playTacticalPulse } from '../lib/audio';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -60,8 +62,25 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function SettingsModal() {
   const { open, rssInterval, autoSummarize, aiModel, threatSound, setOpen, update } = useSettingsStore();
   const { keywords, addKeyword, removeKeyword } = useWatchlistStore();
+  const apiKey = useAuthStore((s) => s.apiKey);
+  const setApiKey = useAuthStore((s) => s.setApiKey);
   const [saving, setSaving] = useState(false);
   const [watchInput, setWatchInput] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [healthData, setHealthData] = useState<{
+    ok: boolean;
+    uptimeSeconds?: number;
+    database?: { ok: boolean; latencyMs: number };
+    memory?: { rssMb: number; heapUsedMb: number };
+  } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    void apiFetch('/api/diagnostics')
+      .then((r) => r.json())
+      .then((data) => setHealthData(data))
+      .catch(() => setHealthData(null));
+  }, [open]);
 
   if (!open) return null;
 
@@ -74,7 +93,7 @@ function SettingsModal() {
         'ai.model': aiModel,
         'threat.sound': String(threatSound)
       };
-      const res = await fetch(apiUrl('/api/settings/'), {
+      const res = await apiFetch('/api/settings/', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -82,8 +101,12 @@ function SettingsModal() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setOpen(false);
       showToast('Ayarlar kaydedildi', 'success');
-    } catch {
-      showToast('Ayarlar kaydedilemedi', 'error');
+    } catch (err) {
+      // apiFetch already toasts a specific message for 401; don't stack a
+      // second, vaguer one on top of it.
+      if (!(err instanceof ApiKeyError)) {
+        showToast('Ayarlar kaydedilemedi', 'error');
+      }
     } finally {
       setSaving(false);
     }
@@ -91,7 +114,7 @@ function SettingsModal() {
 
   const clearFeedCache = async () => {
     try {
-      await fetch('/api/feed/refresh', { method: 'POST' });
+      await apiFetch('/api/feed/refresh', { method: 'POST' });
       showToast('Feed yenilemesi tetiklendi', 'info');
     } catch {
       showToast('Feed yenilenemedi', 'error');
@@ -101,10 +124,10 @@ function SettingsModal() {
   const clearAllPins = async () => {
     if (!window.confirm('Tum pinler silinecek. Emin misiniz?')) return;
     try {
-      const pins = await fetch('/api/pins').then((r) => r.json());
+      const pins = await apiFetch('/api/pins').then((r) => r.json());
       await Promise.all(
         (pins as Array<{ id: number }>).map((pin) =>
-          fetch(`/api/pins/${pin.id}`, { method: 'DELETE' })
+          apiFetch(`/api/pins/${pin.id}`, { method: 'DELETE' })
         )
       );
       showToast('Tum pinler silindi', 'success');
@@ -157,6 +180,50 @@ function SettingsModal() {
         </div>
 
         <div style={{ padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <Section title="GUVENLIK">
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Yazma islemleri (pin, ayar, yenileme) icin paylasilan anahtar gerekir.
+              Sunucudaki <code>API_SHARED_SECRET</code> degeriyle ayni olmali.
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="API anahtari"
+                autoComplete="off"
+                spellCheck={false}
+                aria-label="API anahtari"
+                style={{
+                  flex: 1,
+                  height: 30,
+                  background: 'var(--bg-elevated)',
+                  border: `1px solid ${apiKey ? 'rgba(0,208,132,0.35)' : 'rgba(255,59,59,0.35)'}`,
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '0 10px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  color: 'var(--text-primary)',
+                  outline: 'none'
+                }}
+              />
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setShowApiKey((v) => !v)}
+                aria-label={showApiKey ? 'Anahtari gizle' : 'Anahtari goster'}
+                style={{ border: '1px solid var(--border)', minWidth: 34 }}
+              >
+                {showApiKey ? '🙈' : '👁'}
+              </button>
+            </div>
+            {!apiKey ? (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--red)' }}>
+                Anahtar girilmedi — yazma islemleri reddedilecek.
+              </span>
+            ) : null}
+          </Section>
+
           <Section title="VERI">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>RSS Yenileme</span>
@@ -220,19 +287,73 @@ function SettingsModal() {
           <Section title="BILDIRIM">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                Tehdit sesi (severity 4+ olayda bip)
+                Tehdit sesi (severity 4+ olayda alarm)
               </span>
-              <Toggle checked={threatSound} onChange={(v) => update({ threatSound: v })} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTacticalPulse('critical');
+                    showToast('Taktik alarm sesi çalındı', 'info');
+                  }}
+                  className="btn-ghost"
+                  style={{ fontSize: 10, padding: '3px 8px', border: '1px solid var(--border)' }}
+                >
+                  🔊 Test Et
+                </button>
+                <Toggle checked={threatSound} onChange={(v) => update({ threatSound: v })} />
+              </div>
             </div>
           </Section>
 
-          <Section title="VERITABANI">
-            <button className="btn-ghost" onClick={clearFeedCache} style={{ border: '1px solid var(--border)' }}>
+          <Section title="SISTEM TESHIS & GOZLEMLENEBILIRLIK">
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                padding: '10px 12px',
+                background: 'var(--bg-elevated)',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Backend Durumu:</span>
+                <span style={{ color: healthData?.ok ? 'var(--green)' : 'var(--red)' }}>
+                  {healthData ? (healthData.ok ? '✓ ÇALIŞIYOR' : '✕ HATA') : '...'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>SQLite Gecikmesi:</span>
+                <span style={{ color: 'var(--text-primary)' }}>
+                  {typeof healthData?.database?.latencyMs === 'number' ? `${healthData.database.latencyMs} ms` : '--'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Uptime:</span>
+                <span style={{ color: 'var(--text-primary)' }}>
+                  {typeof healthData?.uptimeSeconds === 'number' ? `${Math.floor(healthData.uptimeSeconds / 60)} dk` : '--'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Bellek (Heap / RSS):</span>
+                <span style={{ color: 'var(--text-primary)' }}>
+                  {healthData?.memory ? `${healthData.memory.heapUsedMb} MB / ${healthData.memory.rssMb} MB` : '--'}
+                </span>
+              </div>
+            </div>
+          </Section>
+
+          <Section title="VERITABANI & BAKIM">
+            <button className="btn-ghost" onClick={() => void clearFeedCache()} style={{ border: '1px solid var(--border)' }}>
               Feed Onbellek Temizle
             </button>
             <button
               className="btn-ghost"
-              onClick={clearAllPins}
+              onClick={() => void clearAllPins()}
               style={{ border: '1px solid rgba(255,59,59,0.35)', color: 'var(--red)' }}
             >
               Tum Pinleri Sil
@@ -321,7 +442,7 @@ function SettingsModal() {
 
           <button
             type="button"
-            onClick={save}
+            onClick={() => void save()}
             disabled={saving}
             style={{
               width: '100%',

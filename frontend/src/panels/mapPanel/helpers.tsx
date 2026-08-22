@@ -42,10 +42,15 @@ export function MapBootstrap({
 
   useEffect(() => {
     mapRef.current = map;
-    map.addLayer(newsPinsLayerRef.current);
-    map.addLayer(manualPinsLayer.current);
-    map.addLayer(nuclearLayerRef.current);
-    map.addLayer(samLayerRef.current);
+    const newsLayer = newsPinsLayerRef.current;
+    const manualLayer = manualPinsLayer.current;
+    const nuclearLayer = nuclearLayerRef.current;
+    const samLayer = samLayerRef.current;
+
+    map.addLayer(newsLayer);
+    map.addLayer(manualLayer);
+    map.addLayer(nuclearLayer);
+    map.addLayer(samLayer);
     const clickHandler = (ev: L.LeafletMouseEvent) => {
       if (!pinMode || drawActive) return;
       onPick([ev.latlng.lat, ev.latlng.lng]);
@@ -53,10 +58,10 @@ export function MapBootstrap({
     map.on("click", clickHandler);
     return () => {
       map.off("click", clickHandler);
-      map.removeLayer(newsPinsLayerRef.current);
-      map.removeLayer(manualPinsLayer.current);
-      map.removeLayer(nuclearLayerRef.current);
-      map.removeLayer(samLayerRef.current);
+      map.removeLayer(newsLayer);
+      map.removeLayer(manualLayer);
+      map.removeLayer(nuclearLayer);
+      map.removeLayer(samLayer);
     };
   }, [
     map,

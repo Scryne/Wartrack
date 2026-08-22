@@ -1,5 +1,10 @@
 export function showConfirmToast(message: string): Promise<boolean> {
   return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.style.cssText = `
+      position:fixed; inset:0; z-index:9998; background:transparent;
+    `;
+
     const el = document.createElement('div');
     el.style.cssText = `
       position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
@@ -10,29 +15,54 @@ export function showConfirmToast(message: string): Promise<boolean> {
       box-shadow:0 8px 32px rgba(0,0,0,0.6);
       animation:slide-down 0.2s ease-out;
     `;
-    el.innerHTML = `
-      <span>${message}</span>
-      <button id='confirm-yes' style='padding:4px 14px;background:#FF3B3B;
-        border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:12px'>
-        Evet, Sil
-      </button>
-      <button id='confirm-no' style='padding:4px 14px;background:transparent;
-        border:1px solid rgba(255,255,255,0.2);border-radius:4px;
-        color:#94A3B8;cursor:pointer;font-size:12px'>
-        Iptal
-      </button>
+
+    // textContent, not innerHTML: the message is interpolated verbatim and
+    // must never be able to inject markup.
+    const label = document.createElement('span');
+    label.textContent = message;
+
+    const confirmButton = document.createElement('button');
+    confirmButton.textContent = 'Evet, Sil';
+    confirmButton.style.cssText = `
+      padding:4px 14px;background:#FF3B3B;border:none;border-radius:4px;
+      color:#fff;cursor:pointer;font-size:12px;
     `;
-    document.body.appendChild(el);
-    const cleanup = () => {
+
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Iptal';
+    cancelButton.style.cssText = `
+      padding:4px 14px;background:transparent;border:1px solid rgba(255,255,255,0.2);
+      border-radius:4px;color:#94A3B8;cursor:pointer;font-size:12px;
+    `;
+
+    el.append(label, confirmButton, cancelButton);
+
+    // Settle exactly once, and always tear down. Previously the promise could
+    // only resolve via the two buttons, so dismissing any other way leaked
+    // both the node and a permanently pending promise.
+    let settled = false;
+    const settle = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', onKeyDown, true);
+      backdrop.remove();
       el.remove();
+      resolve(value);
     };
-    el.querySelector('#confirm-yes')!.addEventListener('click', () => {
-      cleanup();
-      resolve(true);
-    });
-    el.querySelector('#confirm-no')!.addEventListener('click', () => {
-      cleanup();
-      resolve(false);
-    });
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        settle(false);
+      }
+    }
+
+    confirmButton.addEventListener('click', () => settle(true));
+    cancelButton.addEventListener('click', () => settle(false));
+    backdrop.addEventListener('mousedown', () => settle(false));
+    document.addEventListener('keydown', onKeyDown, true);
+
+    document.body.append(backdrop, el);
+    cancelButton.focus();
   });
 }

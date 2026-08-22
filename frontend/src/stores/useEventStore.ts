@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Event } from "../types";
-
-// API calls go through vite proxy
+import { apiFetch } from "../lib/api";
+import { isAtOrAfter } from "../lib/time";
 
 export interface DashboardStats {
   articles: number;
@@ -27,9 +27,12 @@ interface EventStoreState {
 }
 
 function calcThreatLevel(events: Event[]): 1 | 2 | 3 | 4 | 5 {
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  // Compare parsed instants, not strings. The previous string comparison
+  // against an ISO cutoff was false for every same-day event, pinning the
+  // threat level to 1 outside a ~1 hour window after UTC midnight.
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
   const highSevCount = events.filter(
-    (e) => Number(e.severity) >= 4 && e.createdAt > oneHourAgo
+    (e) => Number(e.severity) >= 4 && isAtOrAfter(e.createdAt, oneHourAgo)
   ).length;
 
   if (highSevCount === 0) return 1;
@@ -49,7 +52,7 @@ export const useEventStore = create<EventStoreState>((set, get) => ({
   fetchEvents: async () => {
     set({ loading: true });
     try {
-      const res = await fetch(`/api/events?limit=100&minSeverity=3`);
+      const res = await apiFetch(`/api/events?limit=100&minSeverity=3`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       const events = (json.data ?? []) as Event[];
@@ -62,7 +65,7 @@ export const useEventStore = create<EventStoreState>((set, get) => ({
 
   fetchStats: async () => {
     try {
-      const res = await fetch(`/api/events/stats`);
+      const res = await apiFetch(`/api/events/stats`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const stats = (await res.json()) as DashboardStats;
       set({ stats });

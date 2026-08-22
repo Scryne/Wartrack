@@ -3,6 +3,7 @@ import { useBookmarkStore } from "../../stores/useBookmarkStore";
 import { useWatchlistStore } from "../../stores/useWatchlistStore";
 import type { NewsPin } from "../../stores/useMapStore";
 import type { Workspace } from "../../types";
+import { toSafeHref } from "../../lib/safeUrl";
 
 export const WORKSPACES: Workspace[] = [
   { id: "iran-israel", name: "İRAN·İSRAİL", center: [32.0, 36.5], zoom: 6 },
@@ -47,10 +48,20 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Validate scheme AND escape for HTML-attribute interpolation.
+ *
+ * Scheme validation alone is not enough: the value is interpolated into a
+ * single-quoted href, so an RSS `link` containing an apostrophe could close
+ * the attribute and inject another (e.g. `https://x.test/a'onmouseover='...`).
+ * Feed content is third-party, so this is attacker-reachable.
+ *
+ * The scheme half is delegated to toSafeHref so this and FeedCard's React
+ * `href` cannot drift apart; only the escaping is specific to the string
+ * interpolation Leaflet popups require.
+ */
 export function toSafeUrl(url: string): string {
-  const trimmed = url.trim();
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return "#";
+  return escapeHtml(toSafeHref(url) ?? "#");
 }
 
 export function makeShapeId(): string {

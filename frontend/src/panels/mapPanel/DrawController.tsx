@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import L from "leaflet";
 import { useMap, useMapEvents } from "react-leaflet";
 import { useDrawStore } from "../../stores/useDrawStore";
@@ -28,7 +28,7 @@ export function DrawController({
   const previewLayerRef = useRef<L.Layer | null>(null);
   const startMarkerRef = useRef<L.Layer | null>(null);
 
-  const clearPreview = () => {
+  const clearPreview = useCallback(() => {
     if (previewLayerRef.current) {
       tempLayerRef.current.removeLayer(previewLayerRef.current);
       previewLayerRef.current = null;
@@ -37,23 +37,25 @@ export function DrawController({
       tempLayerRef.current.removeLayer(startMarkerRef.current);
       startMarkerRef.current = null;
     }
-  };
+  }, []);
 
-  const resetTransient = () => {
+  const resetTransient = useCallback(() => {
     isDrawingRef.current = false;
     currentPointsRef.current = [];
     startPointRef.current = null;
     circleCenterRef.current = null;
     rectangleCornerRef.current = null;
     clearPreview();
-  };
+  }, [clearPreview]);
 
   useEffect(() => {
-    drawLayerRef.current.addTo(map);
-    tempLayerRef.current.addTo(map);
+    const drawLayer = drawLayerRef.current;
+    const tempLayer = tempLayerRef.current;
+    drawLayer.addTo(map);
+    tempLayer.addTo(map);
     return () => {
-      drawLayerRef.current.remove();
-      tempLayerRef.current.remove();
+      drawLayer.remove();
+      tempLayer.remove();
     };
   }, [map, drawLayerRef]);
 
@@ -103,12 +105,12 @@ export function DrawController({
       map.dragging.enable();
       container.style.cursor = pinMode ? "crosshair" : "grab";
     };
-  }, [map, active, pinMode]);
+  }, [map, active, pinMode, resetTransient]);
 
   useEffect(() => {
     if (!active) return;
     resetTransient();
-  }, [tool, active]);
+  }, [tool, active, resetTransient]);
 
   useMapEvents({
     mousedown(e) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMapStore } from '../stores/useMapStore';
 import type { Pin } from '../types';
+import { apiFetch } from '../lib/api';
 
 interface PinDrawerProps {
   draftLatLng: [number, number] | null;
@@ -52,7 +53,7 @@ function PinDrawer({ draftLatLng, setDraftLatLng, setPinMode }: PinDrawerProps) 
       }
 
       if (!draftLatLng) return;
-      const res = await fetch('/api/pins', {
+      const res = await apiFetch('/api/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

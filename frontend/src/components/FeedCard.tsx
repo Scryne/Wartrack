@@ -2,6 +2,7 @@ import { Fragment, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Article } from '../types';
 import { useBookmarkStore } from '../stores/useBookmarkStore';
 import { useWatchlistStore } from '../stores/useWatchlistStore';
+import { toSafeHref } from '../lib/safeUrl';
 
 const CRITICAL = ['strike', 'attack', 'missile', 'bomb', 'nuclear', 'explosion', 'killed', 'war', 'intercept', 'launch', 'fire', 'drone'];
 
@@ -67,9 +68,14 @@ const FeedCard = ({ article, query, forceBookmarkBorder = false }: { article: Ar
         })
       : article.title;
 
+  // article.link is third-party feed content. React renders a javascript: href
+  // verbatim (it only warns), so the scheme has to be checked here. An
+  // unusable link drops href entirely rather than rendering a dead anchor.
+  const safeHref = toSafeHref(article.link);
+
   return (
     <a
-      href={article.link}
+      href={safeHref}
       target="_blank"
       rel="noopener noreferrer"
       style={{

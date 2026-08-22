@@ -1,6 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Bebas+Neue&display=swap');
 @import 'leaflet/dist/leaflet.css';
 
+/* Utilities only, deliberately without `@tailwind base`. CommandPalette and
+   Toast are styled entirely with Tailwind classes, but no directive was ever
+   present, so Tailwind emitted nothing and both rendered with no layout at
+   all. Preflight is omitted because this file already provides its own reset
+   below and the rest of the app relies on it. */
+@tailwind utilities;
+
 :root {
   --bg-void: #000408;
   --bg-panel: #04091280;
@@ -15,15 +22,22 @@
   --text-secondary: #5e7a96;
   --text-muted: #243647;
 
-  --accent: #00aaff;
+  /* Channel triplets are the source of truth; the solid colour is derived.
+     Tailwind needs the bare channels to build alpha modifiers such as
+     bg-accent/15 via `rgb(var(--accent-rgb) / <alpha-value>)`. */
+  --accent-rgb: 0 170 255;
+  --accent: rgb(var(--accent-rgb));
   --accent-dim: rgba(0, 170, 255, 0.08);
   --accent-glow: 0 0 20px rgba(0, 170, 255, 0.2);
 
-  --red: #ff3b3b;
+  --red-rgb: 255 59 59;
+  --red: rgb(var(--red-rgb));
   --red-dim: rgba(255, 59, 59, 0.1);
-  --amber: #f5a623;
+  --amber-rgb: 245 166 35;
+  --amber: rgb(var(--amber-rgb));
   --amber-dim: rgba(245, 166, 35, 0.1);
-  --green: #00d084;
+  --green-rgb: 0 208 132;
+  --green: rgb(var(--green-rgb));
   --green-dim: rgba(0, 208, 132, 0.1);
   --purple: #9b6dff;
 
@@ -43,6 +57,40 @@
   --z-map-panels: 520;
   --z-modal: 700;
   --z-toast: 900;
+
+  /* ── Numbered-token aliases ───────────────────────────────────────────
+     tailwind.config.js maps its colour utilities onto a second, numbered
+     token vocabulary (--bg-2, --text-1, --danger, ...), and ErrorBoundary
+     uses it directly. None of those were defined, so every declaration
+     referencing them was invalid at computed-value time and dropped:
+     CommandPalette rendered with no panel background, Toast with no
+     status colour, and the ErrorBoundary fallback with no styling at all.
+     These are aliases of the existing tokens, not new colours.          */
+  --bg-base: var(--bg-void);
+  --bg-1: var(--bg-surface);
+  --bg-2: var(--bg-surface);
+  --bg-3: var(--bg-elevated);
+  --bg-4: var(--bg-elevated);
+
+  --text-1: var(--text-primary);
+  --text-2: var(--text-secondary);
+  --text-3: var(--text-muted);
+
+  --danger-rgb: var(--red-rgb);
+  --danger: var(--red);
+  --danger-dim: var(--red-dim);
+  --warn-rgb: var(--amber-rgb);
+  --warn: var(--amber);
+  --warn-dim: var(--amber-dim);
+  --success-rgb: var(--green-rgb);
+  --success: var(--green);
+  --orange: #ff6b00;
+
+  --border-dim: var(--border);
+
+  --font-ui: var(--font-sans);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
 }
 
 *, *::before, *::after {
