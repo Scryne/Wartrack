@@ -695,3 +695,34 @@ describe("feed metrics (D25)", () => {
     expect(res.body.feed_fetch_attempt_total).toBe(0);
   });
 });
+
+describe("backup routes (/api/backup)", () => {
+  it("GET /api/backup/list returns a list of available backups", async () => {
+    const res = await request(app).get("/api/backup/list");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("ok", true);
+    expect(res.body).toHaveProperty("total");
+    expect(Array.isArray(res.body.backups)).toBe(true);
+  });
+
+  it("POST /api/backup/create generates a consistent snapshot with API key", async () => {
+    const res = await request(app)
+      .post("/api/backup/create")
+      .set("X-API-Key", TEST_SECRET);
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty("ok", true);
+    expect(res.body).toHaveProperty("backupPath");
+    expect(res.body).toHaveProperty("sha256Checksum");
+    expect(res.body).toHaveProperty("metadata");
+    expect(res.body.metadata).toHaveProperty("integrityCheckStatus", "ok");
+  });
+
+  it("GET /api/diagnostics includes backup telemetry", async () => {
+    const res = await request(app).get("/api/diagnostics");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("backups");
+    expect(res.body.backups).toHaveProperty("total");
+    expect(typeof res.body.backups.total).toBe("number");
+  });
+});

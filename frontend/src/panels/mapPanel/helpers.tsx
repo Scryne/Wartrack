@@ -25,6 +25,7 @@ export function MapBootstrap({
   newsPinsLayerRef,
   nuclearLayerRef,
   samLayerRef,
+  heatmapLayerRef,
   pinMode,
   drawActive,
   onPick
@@ -34,6 +35,7 @@ export function MapBootstrap({
   newsPinsLayerRef: MutableRefObject<L.LayerGroup>;
   nuclearLayerRef: MutableRefObject<L.LayerGroup>;
   samLayerRef: MutableRefObject<L.LayerGroup>;
+  heatmapLayerRef?: MutableRefObject<L.LayerGroup>;
   pinMode: boolean;
   drawActive: boolean;
   onPick: (latlng: [number, number]) => void;
@@ -46,11 +48,14 @@ export function MapBootstrap({
     const manualLayer = manualPinsLayer.current;
     const nuclearLayer = nuclearLayerRef.current;
     const samLayer = samLayerRef.current;
+    const heatmapLayer = heatmapLayerRef?.current;
 
     map.addLayer(newsLayer);
     map.addLayer(manualLayer);
     map.addLayer(nuclearLayer);
     map.addLayer(samLayer);
+    if (heatmapLayer) map.addLayer(heatmapLayer);
+
     const clickHandler = (ev: L.LeafletMouseEvent) => {
       if (!pinMode || drawActive) return;
       onPick([ev.latlng.lat, ev.latlng.lng]);
@@ -62,6 +67,7 @@ export function MapBootstrap({
       map.removeLayer(manualLayer);
       map.removeLayer(nuclearLayer);
       map.removeLayer(samLayer);
+      if (heatmapLayer) map.removeLayer(heatmapLayer);
     };
   }, [
     map,
@@ -70,6 +76,7 @@ export function MapBootstrap({
     newsPinsLayerRef,
     nuclearLayerRef,
     samLayerRef,
+    heatmapLayerRef,
     pinMode,
     drawActive,
     onPick

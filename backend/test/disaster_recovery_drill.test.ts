@@ -67,7 +67,7 @@ describe("DISASTER RECOVERY OPERATIONAL DRILL & RTO/RPO MEASUREMENT", () => {
     expect(integrity.ok).toBe(true);
 
     // Step 8: Restore performed with sidecar cleanup (-wal, -shm removal)
-    const restoreRes = restoreBackup(backupResult.backupPath, primaryDbPath);
+    const restoreRes = restoreBackup(backupResult.backupPath, primaryDbPath, { allowedBackupDir: backupDir });
     expect(restoreRes.ok).toBe(true);
 
     // Step 9: Application restarted

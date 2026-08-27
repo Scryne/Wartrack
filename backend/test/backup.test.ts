@@ -10,7 +10,9 @@ import {
   restoreBackup,
   verifyBackupIntegrity,
   listBackups,
-  rotateBackups
+  rotateBackups,
+  isPathContained,
+  resolveSafeBackupPath
 } from "../src/services/backup.service";
 
 function computePercentiles(durations: number[]) {
@@ -206,7 +208,7 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
     testDb.close();
     fs.writeFileSync(testDbPath, "CORRUPTED_GARBAGE_DATA_SIMULATING_CRASH");
 
-    const restoreResult = restoreBackup(backup.backupPath, testDbPath);
+    const restoreResult = restoreBackup(backup.backupPath, testDbPath, { allowedBackupDir: testBackupDir });
     expect(restoreResult.ok).toBe(true);
     expect(restoreResult.restoredFrom).toBe(backup.backupPath);
 
@@ -255,11 +257,12 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
   });
 
   it("rejects restoring from a corrupted or invalid backup file", () => {
-    const corruptBackupPath = path.join(tmpDir, "corrupted.db");
+    const corruptBackupPath = path.join(testBackupDir, "corrupted.db");
+    if (!fs.existsSync(testBackupDir)) fs.mkdirSync(testBackupDir, { recursive: true });
     fs.writeFileSync(corruptBackupPath, "NOT_A_SQLITE_DATABASE");
 
     expect(() => {
-      restoreBackup(corruptBackupPath, testDbPath);
+      restoreBackup(corruptBackupPath, testDbPath, { allowedBackupDir: testBackupDir });
     }).toThrow(/Cannot restore corrupted or invalid backup/);
   });
 
@@ -290,7 +293,7 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
 
     // When targeting active in-process DATABASE_PATH while db is open, restoreBackup MUST reject fail-closed
     expect(() => {
-      restoreBackup(backupPath); // defaults to DATABASE_PATH
+      restoreBackup(backupPath, undefined, { allowedBackupDir: testBackupDir }); // defaults to DATABASE_PATH
     }).toThrow(/FAIL-CLOSED RESTORE ERROR/);
   });
 
@@ -318,21 +321,81 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
 
     const meta = JSON.parse(fs.readFileSync(result.metadataPath, "utf8"));
     expect(meta.sha256Checksum).toBe(result.sha256Checksum);
-    expect(meta.databaseSchemaVersion).toBe(5);
+    expect(meta.databaseSchemaVersion).toBe(6);
     expect(meta.applicationVersion).toBe("0.1.0");
     expect(meta.corroborationAlgorithmVersion).toBe("v2.1-tactical");
     expect(meta.tablesSummary.articles).toBe(1);
 
     const listed = listBackups(testBackupDir);
     expect(listed[0].sha256Checksum).toBe(result.sha256Checksum);
-    expect(listed[0].schemaVersion).toBe(5);
+    expect(listed[0].schemaVersion).toBe(6);
 
     // Tamper detection: modify backup file and verify restore detects checksum mismatch
     testDb.close();
     fs.appendFileSync(result.backupPath, "\nTAMPERED_BYTES");
 
     expect(() => {
-      restoreBackup(result.backupPath, testDbPath);
+      restoreBackup(result.backupPath, testDbPath, { allowedBackupDir: testBackupDir });
     }).toThrow(/checksum mismatch/i);
+  });
+
+  describe("SEC-002: PATH CONTAINMENT & TRAVERSAL ADVERSARIAL DRILL", () => {
+    it("isPathContained rejects parent traversal, prefix confusion, and outside absolute paths", () => {
+      const allowedDir = path.join(tmpDir, "safe_backups");
+      fs.mkdirSync(allowedDir, { recursive: true });
+
+      // Valid inside path
+      const validChild = path.join(allowedDir, "snapshot.db");
+      expect(isPathContained(allowedDir, validChild)).toBe(true);
+
+      // Traversal escapes
+      expect(isPathContained(allowedDir, path.join(allowedDir, "../evil.db"))).toBe(false);
+      expect(isPathContained(allowedDir, path.join(allowedDir, "..", "..", "etc", "passwd"))).toBe(false);
+      expect(isPathContained(allowedDir, path.join(allowedDir, "..\\..\\Windows\\System32\\config"))).toBe(false);
+
+      // Prefix confusion (e.g. safe_backups_evil vs safe_backups)
+      const evilPrefixDir = path.join(tmpDir, "safe_backups_evil");
+      fs.mkdirSync(evilPrefixDir, { recursive: true });
+      const evilPrefixFile = path.join(evilPrefixDir, "snapshot.db");
+      expect(isPathContained(allowedDir, evilPrefixFile)).toBe(false);
+
+      // Absolute paths outside allowedDir
+      expect(isPathContained(allowedDir, "C:\\Windows\\System32\\calc.exe")).toBe(false);
+      expect(isPathContained(allowedDir, "/etc/passwd")).toBe(false);
+      expect(isPathContained(allowedDir, "/tmp/somedb.db")).toBe(false);
+
+      // Exact parent directory itself is not a valid child file
+      expect(isPathContained(allowedDir, allowedDir)).toBe(false);
+    });
+
+    it("resolveSafeBackupPath blocks path traversal and URL-encoded traversal payloads", () => {
+      const allowedDir = path.join(tmpDir, "safe_backups");
+      fs.mkdirSync(allowedDir, { recursive: true });
+
+      const attackPayloads = [
+        "../../database.db",
+        "..\\..\\database.db",
+        "..\\/..\\database.db",
+        "../../../etc/passwd",
+        "..\\..\\..\\Windows\\System32\\config\\SAM",
+        "C:\\Windows\\System32\\drivers\\etc\\hosts",
+        "/etc/shadow",
+        "%2e%2e%2fdatabase.db",
+        "%2e%2e%5cdatabase.db"
+      ];
+
+      for (const payload of attackPayloads) {
+        expect(() => resolveSafeBackupPath(payload, allowedDir)).toThrow(/PATH TRAVERSAL BLOCKED/);
+      }
+    });
+
+    it("restoreBackup rejects path traversal attacks fail-closed", () => {
+      const allowedDir = path.join(tmpDir, "safe_backups");
+      fs.mkdirSync(allowedDir, { recursive: true });
+
+      expect(() => {
+        restoreBackup("../../outside.db", testDbPath, { allowedBackupDir: allowedDir });
+      }).toThrow(/PATH TRAVERSAL BLOCKED/);
+    });
   });
 });

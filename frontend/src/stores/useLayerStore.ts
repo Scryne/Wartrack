@@ -4,7 +4,9 @@ import { persist } from 'zustand/middleware';
 interface LayerState {
   nuclear: boolean;
   sam: boolean;
-  toggle: (layer: 'nuclear' | 'sam') => void;
+  heatmap: boolean;
+  rangeRings: boolean;
+  toggle: (layer: 'nuclear' | 'sam' | 'heatmap' | 'rangeRings') => void;
 }
 
 export const useLayerStore = create<LayerState>()(
@@ -12,6 +14,8 @@ export const useLayerStore = create<LayerState>()(
     (set) => ({
       nuclear: false,
       sam: false,
+      heatmap: false,
+      rangeRings: false,
       toggle: (layer) => set((s) => ({ [layer]: !s[layer] }))
     }),
     { name: 'wt-layers' }

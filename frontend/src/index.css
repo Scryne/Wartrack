@@ -1,56 +1,66 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Bebas+Neue&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import 'leaflet/dist/leaflet.css';
 
-/* Utilities only, deliberately without `@tailwind base`. CommandPalette and
-   Toast are styled entirely with Tailwind classes, but no directive was ever
-   present, so Tailwind emitted nothing and both rendered with no layout at
-   all. Preflight is omitted because this file already provides its own reset
-   below and the rest of the app relies on it. */
 @tailwind utilities;
 
 :root {
-  --bg-void: #000408;
-  --bg-panel: #04091280;
-  --bg-surface: #071626;
-  --bg-elevated: #0c2040;
-  --bg-overlay: rgba(4, 9, 18, 0.92);
+  /* ── DESIGN.md Bölüm 5: Semantik Renk Mimarisi (Precision Tactical Cobalt) ── */
+  --color-bg: #080B11;             /* Derin zemin (Deep Void) */
+  --color-surface: #0F141F;        /* Kart, panel, modal zemini */
+  --color-surface-sunken: #161D2C; /* Tablo/akış başlığı, input arkası */
+  --color-overlay: rgba(8, 11, 17, 0.92); /* Modal backdrop & dropdowns */
 
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.13);
+  /* ── Kenarlıklar (2 seviye) ── */
+  --color-border: #1E283A;         /* 1px net, sakin taktik sınır */
+  --color-border-strong: #2E3D56;  /* Vurgulu ayırıcı */
 
-  --text-primary: #f0f4f8;
-  --text-secondary: #5e7a96;
-  --text-muted: #243647;
+  /* ── Metin Hiyerarşisi (4 seviye) ── */
+  --color-fg: #F1F5F9;             /* Başlık, ana metin, kritik değerler (WCAG 17.5:1) */
+  --color-fg-muted: #94A3B8;       /* Açıklamalar, ikincil veri (WCAG 7.8:1) */
+  --color-fg-subtle: #64748B;      /* Etiketler, placeholder, pasif ikonlar (WCAG 4.3:1) */
+  --color-fg-on-accent: #FFFFFF;
 
-  /* Channel triplets are the source of truth; the solid colour is derived.
-     Tailwind needs the bare channels to build alpha modifiers such as
-     bg-accent/15 via `rgb(var(--accent-rgb) / <alpha-value>)`. */
-  --accent-rgb: 0 170 255;
-  --accent: rgb(var(--accent-rgb));
-  --accent-dim: rgba(0, 170, 255, 0.08);
-  --accent-glow: 0 0 20px rgba(0, 170, 255, 0.2);
+  /* ── Marka / Aksiyon (Tek Taktik Aksan) ── */
+  --color-accent: #00A3FF;
+  --color-accent-hover: #0084D1;
+  --color-accent-subtle: rgba(0, 163, 255, 0.12);
 
-  --red-rgb: 255 59 59;
-  --red: rgb(var(--red-rgb));
-  --red-dim: rgba(255, 59, 59, 0.1);
-  --amber-rgb: 245 166 35;
-  --amber: rgb(var(--amber-rgb));
-  --amber-dim: rgba(245, 166, 35, 0.1);
-  --green-rgb: 0 208 132;
-  --green: rgb(var(--green-rgb));
-  --green-dim: rgba(0, 208, 132, 0.1);
-  --purple: #9b6dff;
+  /* ── Durum Renkleri (Semantik, Sabit Anlam) ── */
+  --color-success: #10B981;
+  --color-success-subtle: rgba(16, 185, 129, 0.12);
+  --color-warning: #F59E0B;
+  --color-warning-subtle: rgba(245, 158, 11, 0.12);
+  --color-danger: #EF4444;
+  --color-danger-subtle: rgba(239, 68, 68, 0.12);
+  --color-info: #3B82F6;
+  --color-info-subtle: rgba(59, 130, 246, 0.12);
 
-  --font-sans: 'Space Grotesk', system-ui, sans-serif;
+  /* ── Tipografi (DESIGN.md Bölüm 6) ── */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
-  --font-display: 'Bebas Neue', sans-serif;
 
-  --gap: 4px;
-  --radius: 8px;
-  --radius-sm: 4px;
+  /* ── Spacing (4px Tabanlı, 7 Sabit Değer) ── */
+  --space-1: 4px;   /* İkon-metin arası */
+  --space-2: 8px;   /* Kart içi sıkı gruplar */
+  --space-3: 12px;  /* Form alanı / padding */
+  --space-4: 16px;  /* Standart kart padding */
+  --space-6: 24px;  /* Kartlar ve paneller arası */
+  --space-8: 32px;  /* Bölüm arası */
+  --space-12: 48px; /* Büyük ayrım */
+
+  /* ── Radius Ölçeği ── */
+  --radius-sm: 4px;    /* Rozet, tag, küçük buton */
+  --radius-md: 6px;    /* Buton, input, segment control */
+  --radius-lg: 8px;    /* Kart, panel, popup */
+  --radius-xl: 12px;   /* Modal, drawer */
+  --radius-full: 9999px; /* Avatar, pill */
+
+  /* ── Layout & Katman Ölçeği ── */
+  --gap: var(--space-1);
   --header-h: 40px;
-  --status-h: 36px;
-  --ticker-h: 34px;
+  --status-h: 40px;
+  --ticker-h: 32px;
 
   --z-map-base: 0;
   --z-map-controls: 450;
@@ -58,39 +68,58 @@
   --z-modal: 700;
   --z-toast: 900;
 
-  /* ── Numbered-token aliases ───────────────────────────────────────────
-     tailwind.config.js maps its colour utilities onto a second, numbered
-     token vocabulary (--bg-2, --text-1, --danger, ...), and ErrorBoundary
-     uses it directly. None of those were defined, so every declaration
-     referencing them was invalid at computed-value time and dropped:
-     CommandPalette rendered with no panel background, Toast with no
-     status colour, and the ErrorBoundary fallback with no styling at all.
-     These are aliases of the existing tokens, not new colours.          */
-  --bg-base: var(--bg-void);
-  --bg-1: var(--bg-surface);
-  --bg-2: var(--bg-surface);
-  --bg-3: var(--bg-elevated);
-  --bg-4: var(--bg-elevated);
+  /* ── Geriye Dönük Uyumluluk (Legacy Aliases) ── */
+  --bg-void: var(--color-bg);
+  --bg-panel: var(--color-surface);
+  --bg-surface: var(--color-surface);
+  --bg-elevated: var(--color-surface-sunken);
+  --bg-overlay: var(--color-overlay);
+  --border: var(--color-border);
+  --border-strong: var(--color-border-strong);
+  --border-dim: var(--color-border);
 
-  --text-1: var(--text-primary);
-  --text-2: var(--text-secondary);
-  --text-3: var(--text-muted);
+  --text-primary: var(--color-fg);
+  --text-secondary: var(--color-fg-muted);
+  --text-muted: var(--color-fg-subtle);
+
+  --accent-rgb: 0 163 255;
+  --accent-dim: var(--color-accent-subtle);
+  --accent-glow: none;
+
+  --red-rgb: 239 68 68;
+  --red: var(--color-danger);
+  --red-dim: var(--color-danger-subtle);
+  --amber-rgb: 245 158 11;
+  --amber: var(--color-warning);
+  --amber-dim: var(--color-warning-subtle);
+  --green-rgb: 16 185 129;
+  --green: var(--color-success);
+  --green-dim: var(--color-success-subtle);
 
   --danger-rgb: var(--red-rgb);
-  --danger: var(--red);
-  --danger-dim: var(--red-dim);
+  --danger: var(--color-danger);
+  --danger-dim: var(--color-danger-subtle);
   --warn-rgb: var(--amber-rgb);
-  --warn: var(--amber);
-  --warn-dim: var(--amber-dim);
+  --warn: var(--color-warning);
+  --warn-dim: var(--color-warning-subtle);
   --success-rgb: var(--green-rgb);
-  --success: var(--green);
-  --orange: #ff6b00;
+  --success: var(--color-success);
+  --radius: var(--radius-lg);
 
-  --border-dim: var(--border);
-
+  --bg-base: var(--color-bg);
+  --bg-1: var(--color-surface);
+  --bg-2: var(--color-surface);
+  --bg-3: var(--color-surface-sunken);
+  --bg-4: var(--color-surface-sunken);
+  --text-1: var(--color-fg);
+  --text-2: var(--color-fg-muted);
+  --text-3: var(--color-fg-subtle);
   --font-ui: var(--font-sans);
-  --radius-md: var(--radius);
-  --radius-lg: var(--radius);
+}
+
+/* ── Koyu Tema Varyantı (Sabitlenmiş Taktik Palet) ── */
+[data-theme="dark"], :root {
+  color-scheme: dark;
 }
 
 *, *::before, *::after {
@@ -103,33 +132,49 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-void);
-  color: var(--text-primary);
+  background: var(--color-bg);
+  color: var(--color-fg);
   font-family: var(--font-sans);
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular sayılar için global sınıf */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 3px;
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 2px;
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
 }
 
 :focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
+/* ── Animasyonlar & Mikro-Etkileşimler (<300ms) ── */
 @keyframes pulse-dot {
   0%, 100% {
     opacity: 1;
@@ -137,16 +182,7 @@ html, body, #root {
   }
   50% {
     opacity: 0.4;
-    transform: scale(0.8);
-  }
-}
-
-@keyframes blink-red {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(255, 59, 59, 0);
-  }
-  50% {
-    box-shadow: 0 0 12px 3px rgba(255, 59, 59, 0.4);
+    transform: scale(0.85);
   }
 }
 
@@ -176,8 +212,17 @@ html, body, #root {
   100% { transform: translateX(-50%); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Leaflet & Kartografik Stil ── */
 .leaflet-container {
-  background: var(--bg-void) !important;
+  background: var(--color-bg) !important;
   font-family: var(--font-mono) !important;
 }
 
@@ -186,22 +231,19 @@ html, body, #root {
 }
 
 .leaflet-popup-content-wrapper {
-  background: var(--bg-surface) !important;
-  border: 1px solid var(--border-strong) !important;
-  border-radius: var(--radius) !important;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8) !important;
-  color: var(--text-primary) !important;
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border-strong) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6) !important;
+  color: var(--color-fg) !important;
   font-family: var(--font-sans) !important;
-  min-width: 300px !important;
-  max-width: 360px !important;
+  min-width: 280px !important;
+  max-width: 340px !important;
+  padding: 0 !important;
 }
 
 .leaflet-popup-content {
-  margin: 14px 16px !important;
-}
-
-.wt-popup .leaflet-popup-content-wrapper {
-  min-width: 280px;
+  margin: var(--space-3) var(--space-4) !important;
 }
 
 .leaflet-popup-tip-container {
@@ -209,92 +251,210 @@ html, body, #root {
 }
 
 .leaflet-bar {
-  border: 1px solid var(--border-strong) !important;
-  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
 }
 
 .leaflet-bar a {
-  background: var(--bg-surface) !important;
-  color: var(--text-secondary) !important;
-  border-bottom: 1px solid var(--border) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-fg-muted) !important;
+  border-bottom: 1px solid var(--color-border) !important;
   width: 28px !important;
   height: 28px !important;
   line-height: 28px !important;
   font-family: var(--font-sans) !important;
+  transition: background 0.12s, color 0.12s;
 }
 
 .leaflet-bar a:hover {
-  background: var(--bg-elevated) !important;
-  color: var(--text-primary) !important;
+  background: var(--color-surface-sunken) !important;
+  color: var(--color-fg) !important;
 }
 
+/* ── Standart Panel ve Bileşen Yapıları (DESIGN.md Bölüm 7 & 8) ── */
 .panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   height: 100%;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 }
 
 .panel-header {
   height: var(--header-h);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   justify-content: space-between;
   flex-shrink: 0;
-  background: rgba(0, 170, 255, 0.02);
+  background: var(--color-surface-sunken);
 }
 
 .panel-title {
   font-family: var(--font-display);
-  font-size: 14px;
-  letter-spacing: 2px;
-  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-fg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ── Buton Varyantları (DESIGN.md Bölüm 8.5) ── */
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-fg-on-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.12s ease;
+}
+
+.btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--color-surface-sunken);
+  border-color: var(--color-border-strong);
 }
 
 .btn-ghost {
-  background: none;
+  background: transparent;
   border: none;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--color-fg-muted);
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   transition: color 0.12s, background 0.12s;
 }
 
 .btn-ghost:hover {
-  color: var(--text-primary);
-  background: var(--bg-elevated);
+  color: var(--color-fg);
+  background: var(--color-surface-sunken);
 }
 
-.toast-enter {
-  animation: fade-in 0.18s ease-out;
+/* ── Durum Rozetleri (DESIGN.md Bölüm 8.4) ── */
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-sans);
 }
 
-.toast-exit {
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.22s ease, transform 0.22s ease;
+.badge-status-success {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
 }
 
+.badge-status-warning {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+
+.badge-status-danger {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.badge-status-neutral {
+  background: var(--color-surface-sunken);
+  color: var(--color-fg-muted);
+}
+
+/* ── Segment Kontrolü (DESIGN.md Bölüm 8.11) ── */
+.segment-container {
+  display: flex;
+  background: var(--color-surface-sunken);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  gap: 2px;
+}
+
+.segment-item {
+  flex: 1;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: var(--color-fg-muted);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+
+.segment-item:hover {
+  color: var(--color-fg);
+}
+
+.segment-item-active {
+  background: var(--color-surface);
+  color: var(--color-fg);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Tooltip ── */
 .wt-tooltip {
-  background: rgba(4, 9, 18, 0.92) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #94A3B8 !important;
-  font-family: 'JetBrains Mono', monospace !important;
-  font-size: 10px !important;
-  padding: 3px 8px !important;
-  border-radius: 4px !important;
-  box-shadow: none !important;
+  background: var(--color-overlay) !important;
+  border: 1px solid var(--color-border-strong) !important;
+  color: var(--color-fg-muted) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
 }
 
 .wt-tooltip::before {

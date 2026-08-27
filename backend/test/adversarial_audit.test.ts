@@ -78,7 +78,9 @@ describe("ADVERSARIAL SECURITY AUDIT", () => {
         { method: "put", path: "/api/settings", body: { "map.tile": "cartodbDark" } },
         { method: "post", path: "/api/bookmarks", body: { articleId: 1 } },
         { method: "delete", path: "/api/bookmarks/1" },
-        { method: "post", path: "/api/brief" }
+        { method: "post", path: "/api/brief" },
+        { method: "post", path: "/api/backup/create" },
+        { method: "post", path: "/api/backup/restore", body: { backupPath: "dummy.db" } }
       ];
 
       for (const endpoint of mutatingRoutes) {
@@ -113,7 +115,8 @@ describe("ADVERSARIAL SECURITY AUDIT", () => {
         "/api/settings",
         "/api/bookmarks",
         "/api/summarize/status",
-        "/api/summarize/latest"
+        "/api/summarize/latest",
+        "/api/backup/list"
       ];
 
       for (const route of readRoutes) {
@@ -123,18 +126,57 @@ describe("ADVERSARIAL SECURITY AUDIT", () => {
     });
   });
 
-  describe("Filesystem & Backup Path Traversal Audits", () => {
-    it("rejects path traversal and non-existent files during backup restoration", () => {
+  describe("Filesystem & Backup Path Traversal Audits (SEC-002)", () => {
+    it("rejects path traversal, absolute paths, and outside files during backup restoration", () => {
       const traversalPaths = [
         "../../../../../../etc/passwd",
         "..\\..\\..\\..\\Windows\\System32\\config\\SAM",
+        "..\\/..\\/database.db",
         "/proc/self/environ",
-        "relative/non/existent/backup.db\0.txt"
+        "C:\\Windows\\System32\\drivers\\etc\\hosts",
+        "relative/non/existent/backup.db\0.txt",
+        "%2e%2e%2foutside.db"
       ];
 
       for (const badPath of traversalPaths) {
         expect(() => restoreBackup(badPath)).toThrow();
       }
+    });
+
+    it("HTTP GATE: POST /api/backup/restore rejects traversal attacks and targetDbPath overrides", async () => {
+      // 1. Path traversal attempt via API
+      const res1 = await request(app)
+        .post("/api/backup/restore")
+        .set("X-API-Key", VALID_KEY)
+        .send({ backupPath: "../../etc/shadow" });
+      expect(res1.status).toBe(400);
+      expect(res1.body.message).toMatch(/PATH TRAVERSAL|does not exist/i);
+
+      // 2. Windows-style backslash traversal
+      const res2 = await request(app)
+        .post("/api/backup/restore")
+        .set("X-API-Key", VALID_KEY)
+        .send({ backupPath: "..\\..\\Windows\\System32\\config\\SAM" });
+      expect(res2.status).toBe(400);
+
+      // 3. Prohibited arbitrary targetDbPath injection
+      const res3 = await request(app)
+        .post("/api/backup/restore")
+        .set("X-API-Key", VALID_KEY)
+        .send({
+          backupPath: "wartracker-backup-dummy.db",
+          targetDbPath: "C:\\Windows\\System32\\injected.db"
+        });
+      expect(res3.status).toBe(400);
+      expect(res3.body.message).toMatch(/targetDbPath cannot be overridden/i);
+
+      // 4. Missing backupPath payload
+      const res4 = await request(app)
+        .post("/api/backup/restore")
+        .set("X-API-Key", VALID_KEY)
+        .send({});
+      expect(res4.status).toBe(400);
+      expect(res4.body.message).toMatch(/backupPath is required/i);
     });
 
     it("rejects corrupted and malicious SQLite databases", () => {

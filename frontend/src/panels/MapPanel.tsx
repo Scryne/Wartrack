@@ -60,10 +60,12 @@ function MapPanel({
   const drawLayerRef = useRef(L.layerGroup());
   const nuclearLayerRef = useRef(L.layerGroup());
   const samLayerRef = useRef(L.layerGroup());
+  const heatmapLayerRef = useRef(L.layerGroup());
   const drawActive = useDrawStore((s) => s.active);
   const toggleDraw = useDrawStore((s) => s.toggle);
   const showNuclear = useLayerStore((s) => s.nuclear);
   const showSam = useLayerStore((s) => s.sam);
+  const showHeatmap = useLayerStore((s) => s.heatmap);
   const toggleLayer = useLayerStore((s) => s.toggle);
 
   const [coords, setCoords] = useState<[number, number]>([37.4888, 42.6935]);
@@ -306,7 +308,7 @@ function MapPanel({
         fillOpacity: 0.04,
         dashArray: '4 4'
       })
-        .bindTooltip(sys.name, {
+        .bindTooltip(`${sys.name} (${sys.radiusKm} km)`, {
           permanent: false,
           direction: 'top',
           className: 'wt-tooltip'
@@ -322,6 +324,34 @@ function MapPanel({
       }).addTo(samLayerRef.current);
     });
   }, [showSam]);
+
+  useEffect(() => {
+    heatmapLayerRef.current.clearLayers();
+    if (!showHeatmap) return;
+
+    newsPins.forEach((pin) => {
+      if (typeof pin.lat !== 'number' || typeof pin.lng !== 'number') return;
+      const isHighSev = isCritical(pin.title);
+      const outerColor = isHighSev ? '#FF3B3B' : '#F5A623';
+      const innerColor = isHighSev ? '#FF0000' : '#FF6B00';
+
+      L.circle([pin.lat, pin.lng], {
+        radius: isHighSev ? 75000 : 40000,
+        color: 'transparent',
+        fillColor: outerColor,
+        fillOpacity: 0.18,
+        stroke: false
+      }).addTo(heatmapLayerRef.current);
+
+      L.circle([pin.lat, pin.lng], {
+        radius: isHighSev ? 30000 : 18000,
+        color: 'transparent',
+        fillColor: innerColor,
+        fillOpacity: 0.4,
+        stroke: false
+      }).addTo(heatmapLayerRef.current);
+    });
+  }, [showHeatmap, newsPins]);
 
   return (
     <section className="panel" style={{ overflow: 'hidden', position: 'relative' }}>
@@ -340,6 +370,7 @@ function MapPanel({
               newsPinsLayerRef={newsPinsLayerRef}
               nuclearLayerRef={nuclearLayerRef}
               samLayerRef={samLayerRef}
+              heatmapLayerRef={heatmapLayerRef}
               pinMode={pinMode}
               drawActive={drawActive}
               onPick={handlePick}
@@ -481,7 +512,7 @@ function MapPanel({
           <button
             type="button"
             onClick={() => toggleLayer('sam')}
-            title="SAM Menzilleri"
+            title="SAM & Tehdit Menzilleri"
             style={{
               width: 32,
               height: 32,
@@ -495,6 +526,25 @@ function MapPanel({
             }}
           >
             🎯
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleLayer('heatmap')}
+            title="Olay Yoğunluk / Sıcak Noktalar (Heatmap)"
+            style={{
+              width: 32,
+              height: 32,
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 14,
+              borderRadius: 'var(--radius-sm)',
+              color: showHeatmap ? '#FF6B00' : 'rgba(255,255,255,0.3)',
+              background: showHeatmap ? 'rgba(255,107,0,0.14)' : 'none',
+              transition: 'all 0.12s'
+            }}
+          >
+            🔥
           </button>
         </div>
 

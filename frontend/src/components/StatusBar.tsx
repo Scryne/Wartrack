@@ -28,6 +28,7 @@ const StatusBar = () => {
   const watchCount = useFeedStore((s) =>
     s.articles.filter((a) => matches(a.title).length > 0).length
   );
+  const threatSound = useSettingsStore((s) => s.threatSound);
   const [time, setTime] = useState('');
   const [isCompact, setIsCompact] = useState(() => window.innerWidth < 1100);
 
@@ -195,14 +196,14 @@ const StatusBar = () => {
         {!isCompact ? <div style={{ width: 1, height: 14, background: 'var(--border-strong)' }} /> : null}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {keywords.length > 0 && watchCount > 0 ? (
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 5,
-              padding: '0 12px',
+              padding: '0 10px',
               borderLeft: '1px solid var(--border)',
               borderRight: '1px solid var(--border)'
             }}
@@ -227,16 +228,71 @@ const StatusBar = () => {
             </span>
           </div>
         ) : null}
+
+        {/* Global Sound Mute Toggle */}
+        <button
+          className="btn-ghost"
+          onClick={() => {
+            useSettingsStore.getState().update({ threatSound: !threatSound });
+          }}
+          title={threatSound ? 'Taktik sesleri kapat' : 'Taktik sesleri aç'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 11,
+            padding: '3px 8px',
+            fontFamily: 'var(--font-mono)',
+            color: threatSound ? 'var(--accent)' : 'var(--text-muted)'
+          }}
+        >
+          <span>{threatSound ? '🔊' : '🔇'}</span>
+          {!isCompact ? <span style={{ fontSize: 9 }}>{threatSound ? 'SES AÇIK' : 'SESSİZ'}</span> : null}
+        </button>
+
+        {/* Theme Selector */}
+        <select
+          defaultValue={localStorage.getItem('wartracker-theme') ?? 'dark'}
+          onChange={(e) => {
+            const val = e.target.value;
+            localStorage.setItem('wartracker-theme', val);
+            if (val === 'dark') {
+              document.documentElement.removeAttribute('data-theme');
+            } else {
+              document.documentElement.setAttribute('data-theme', val);
+            }
+          }}
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 9,
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-secondary)',
+            border: '1px solid var(--border-strong)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '2px 6px',
+            cursor: 'pointer',
+            outline: 'none'
+          }}
+          title="Taktik Arayüz Teması"
+        >
+          <option value="dark">DARK HUD</option>
+          <option value="nvg">NVG YEŞİL</option>
+          <option value="amber">FLIR AMBER</option>
+        </select>
+
         <span
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: 14,
+            fontSize: 13,
             color: 'var(--text-secondary)',
-            letterSpacing: 2
+            letterSpacing: 1.5,
+            minWidth: 62,
+            textAlign: 'center'
           }}
         >
           {time}
         </span>
+
         <button
           className="btn-ghost"
           onClick={() => useSettingsStore.getState().setOpen(true)}
