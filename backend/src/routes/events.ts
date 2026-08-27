@@ -614,7 +614,7 @@ router.get("/sitrep", (req: Request, res: Response) => {
 router.get("/stats", (_req: Request, res: Response) => {
   try {
     const todayArticles = db
-      .prepare("SELECT COUNT(*) as cnt FROM articles WHERE date(createdAt) = date('now')")
+      .prepare(`SELECT COUNT(*) as cnt FROM articles WHERE date(createdAt) = date(${sqliteIsoNow()})`)
       .get() as { cnt: number };
 
     const last24hEvents = db

@@ -1,0 +1,17 @@
+{
+  "filename": "wartracker-backup-2026-08-23T08-16-34-355Z.db",
+  "sizeBytes": 65536,
+  "sha256Checksum": "13ebd49db72a06679a3fd772664560ccaa0c1b20c85d4df7f90f6589279ba17d",
+  "createdAt": "2026-08-23T08:16:34.355Z",
+  "databaseSchemaVersion": 5,
+  "applicationVersion": "0.1.0",
+  "corroborationAlgorithmVersion": "v2.1-tactical",
+  "tablesSummary": {
+    "articles": 2,
+    "events": 2,
+    "pins": 0,
+    "bookmarks": 0,
+    "settings": 7
+  },
+  "integrityCheckStatus": "ok"
+}

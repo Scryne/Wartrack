@@ -11,3 +11,5 @@ backend/dist/
 .env.*
 !.env.example
 .logs/
+design/shots/
+.env.claude

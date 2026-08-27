@@ -125,3 +125,14 @@ export function requireApiKey(req: Request, res: Response, next: NextFunction) {
 
   return next();
 }
+
+/**
+ * Validates a candidate API key against the configured shared secret.
+ */
+export function isApiKeyValid(providedKey: unknown): boolean {
+  if (typeof providedKey !== "string") return false;
+  const expected = getSharedSecret();
+  if (!expected) return false;
+  return secretsMatch(providedKey.trim(), expected);
+}
+

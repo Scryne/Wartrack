@@ -6,7 +6,7 @@ import { createApp, resolveAllowedOrigins } from "./app";
 import { registerJobs } from "./jobs";
 import db from "./db";
 import { sqliteIsoNow } from "./lib/time";
-import { assertSharedSecretConfigured } from "./lib/auth";
+import { assertSharedSecretConfigured, isApiKeyValid } from "./lib/auth";
 
 // After an uncaught exception the process state is undefined by Node's own
 // contract: handles may be leaked and a transaction may be half-applied.
@@ -56,6 +56,21 @@ const io = new Server(httpServer, {
     credentials: true
   },
   transports: ["websocket", "polling"]
+});
+
+// Fail-closed handshake authentication for WebSocket connections
+io.use((socket, next) => {
+  const secret = (process.env.API_SHARED_SECRET ?? "").trim();
+  if (!secret) return next();
+
+  const authKey = socket.handshake.auth?.apiKey ?? socket.handshake.headers["x-api-key"];
+  if (isApiKeyValid(authKey)) {
+    return next();
+  }
+
+  // Reject unauthenticated socket connections
+  const authErr = new Error("Unauthorized Socket.IO Connection");
+  return next(authErr);
 });
 
 app.set("io", io);

@@ -118,8 +118,14 @@ export function useSocket(): void {
       useSettingsStore.getState().applyServerSettings(settings);
     };
 
+    const onConnectError = (err: Error) => {
+      setConnected(false);
+      console.warn('[SOCKET] Baglanti hatasi:', err.message);
+    };
+
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
+    socket.on('connect_error', onConnectError);
     socket.on('init', onInit);
     socket.on('article:new', onArticleNew);
     socket.on('article:summarized', onArticleSummarized);
@@ -137,6 +143,7 @@ export function useSocket(): void {
     return () => {
       socket.off('connect');
       socket.off('disconnect');
+      socket.off('connect_error', onConnectError);
       socket.off('init', onInit);
       socket.off('article:new', onArticleNew);
       socket.off('article:summarized', onArticleSummarized);

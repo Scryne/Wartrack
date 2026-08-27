@@ -11,9 +11,13 @@ import { useOverlayStore } from './stores/useOverlayStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { apiFetch } from './lib/api';
 
+import { DesignTokensView } from './components/DesignTokensView';
+
 const MapPanel = lazy(() => import('./panels/MapPanel'));
 const FeedPanel = lazy(() => import('./panels/FeedPanel'));
 const MediaPanel = lazy(() => import('./panels/MediaPanel'));
+const ThreatMeter = lazy(() => import('./panels/ThreatMeter'));
+const EventLog = lazy(() => import('./panels/EventLog'));
 const BRIEF_CACHE_MS = 120000;
 
 const Skeleton = ({ label }: { label: string }) => (
@@ -21,15 +25,15 @@ const Skeleton = ({ label }: { label: string }) => (
     style={{
       width: '100%',
       height: '100%',
-      background: 'var(--bg-panel)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       fontFamily: 'var(--font-mono)',
       fontSize: 10,
-      color: 'var(--text-muted)',
+      color: 'var(--color-fg-subtle)',
       letterSpacing: 2
     }}
   >
@@ -38,8 +42,13 @@ const Skeleton = ({ label }: { label: string }) => (
 );
 
 const App = () => {
+  const isDesignTokens =
+    typeof window !== 'undefined' &&
+    (window.location.pathname === '/design-tokens' || window.location.hash === '#design-tokens');
+
   useSocket();
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
+  const [sidebarTab, setSidebarTab] = useState<'feed' | 'events'>('feed');
   const fetchBookmarks = useBookmarkStore((s) => s.fetchBookmarks);
   const [showBrief, setShowBrief] = useState(false);
   const [briefLoading, setBriefLoading] = useState(false);
@@ -115,6 +124,13 @@ Durum özeti servisi geçici olarak erişilemez (${reason}).`);
   }, []);
 
   useEffect(() => {
+    const savedTheme = localStorage.getItem('wartracker-theme');
+    if (savedTheme && savedTheme !== 'dark') {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 1024);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -156,6 +172,10 @@ Durum özeti servisi geçici olarak erişilemez (${reason}).`);
     void useSettingsStore.getState().hydrate();
   }, []);
 
+  if (isDesignTokens) {
+    return <DesignTokensView onClose={() => { window.location.href = '/'; }} />;
+  }
+
   return (
     <div
       style={{
@@ -183,7 +203,7 @@ Durum özeti servisi geçici olarak erişilemez (${reason}).`);
       >
         <ErrorBoundary>
           <Suspense fallback={<Skeleton label="HARITA" />}>
-            <div style={{ flex: isMobile ? '1 1 auto' : '2.2', minWidth: 0, minHeight: isMobile ? 280 : 0 }}>
+            <div style={{ flex: isMobile ? '1 1 auto' : '2.1', minWidth: 0, minHeight: isMobile ? 280 : 0 }}>
               <MapPanel
                 showBrief={showBrief}
                 briefLoading={briefLoading}
@@ -197,19 +217,69 @@ Durum özeti servisi geçici olarak erişilemez (${reason}).`);
           </Suspense>
         </ErrorBoundary>
 
-        <div style={{ flex: isMobile ? '1 1 auto' : '1.3', minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'var(--gap)' }}>
+        <div style={{ flex: isMobile ? '1 1 auto' : '1.35', minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'var(--gap)' }}>
+          <ErrorBoundary>
+            <Suspense fallback={<Skeleton label="TEHDİT" />}>
+              <ThreatMeter />
+            </Suspense>
+          </ErrorBoundary>
+
           <ErrorBoundary>
             <Suspense fallback={<Skeleton label="YAYIN" />}>
-              <div style={{ height: isMobile ? 160 : 210, flexShrink: 0, minHeight: 0 }}>
+              <div style={{ height: isMobile ? 160 : 190, flexShrink: 0, minHeight: 0 }}>
                 <MediaPanel />
               </div>
             </Suspense>
           </ErrorBoundary>
 
+          {/* Right sidebar tab selector */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 4,
+              background: 'var(--bg-elevated)',
+              padding: 3,
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)',
+              flexShrink: 0
+            }}
+          >
+            <button
+              className={sidebarTab === 'feed' ? 'btn-primary' : 'btn-ghost'}
+              onClick={() => setSidebarTab('feed')}
+              style={{
+                flex: 1,
+                padding: '4px 8px',
+                fontSize: 10,
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: 1
+              }}
+            >
+              ◈ HABER AKIŞI
+            </button>
+            <button
+              className={sidebarTab === 'events' ? 'btn-primary' : 'btn-ghost'}
+              onClick={() => setSidebarTab('events')}
+              style={{
+                flex: 1,
+                padding: '4px 8px',
+                fontSize: 10,
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: 1
+              }}
+            >
+              ⚡ KRİTİK OLAYLAR
+            </button>
+          </div>
+
           <ErrorBoundary>
-            <Suspense fallback={<Skeleton label="HABERLER" />}>
+            <Suspense fallback={<Skeleton label={sidebarTab === 'feed' ? 'HABERLER' : 'OLAYLAR'} />}>
               <div style={{ flex: 1, minHeight: 0 }}>
-                <FeedPanel onOpenBrief={openBrief} />
+                {sidebarTab === 'feed' ? (
+                  <FeedPanel onOpenBrief={openBrief} />
+                ) : (
+                  <EventLog />
+                )}
               </div>
             </Suspense>
           </ErrorBoundary>

@@ -5,10 +5,12 @@ import summarizeRouter from "./summarize";
 import eventsRouter from "./events";
 import settingsRouter from "./settings";
 import bookmarksRouter from "./bookmarks";
+import backupRouter from "./backup";
 import { requireApiKey } from "../lib/auth";
 
 import db from "../db";
 import { jobMetrics } from "../lib/jobMetrics";
+import { listBackups } from "../services/backup.service";
 
 const router = Router();
 
@@ -42,7 +44,7 @@ router.get("/ready", (_req, res) => {
   }
 });
 
-// Detailed operational diagnostics (latency, memory, scheduler)
+// Detailed operational diagnostics (latency, memory, scheduler, backups)
 router.get("/diagnostics", (_req, res) => {
   const start = performance.now();
   let dbOk: boolean;
@@ -54,6 +56,16 @@ router.get("/diagnostics", (_req, res) => {
   }
   const dbLatencyMs = Number((performance.now() - start).toFixed(2));
   const mem = process.memoryUsage();
+
+  let backupCount = 0;
+  let lastBackupAt: string | null = null;
+  try {
+    const backups = listBackups();
+    backupCount = backups.length;
+    lastBackupAt = backups[0]?.createdAt ?? null;
+  } catch {
+    // Non-fatal if backup directory is uninitialized
+  }
 
   res.json({
     ok: dbOk,
@@ -68,7 +80,11 @@ router.get("/diagnostics", (_req, res) => {
       rssMb: Number((mem.rss / (1024 * 1024)).toFixed(2)),
       heapUsedMb: Number((mem.heapUsed / (1024 * 1024)).toFixed(2))
     },
-    jobs: jobMetrics
+    jobs: jobMetrics,
+    backups: {
+      total: backupCount,
+      lastBackupAt
+    }
   });
 });
 
@@ -78,5 +94,6 @@ router.use("/summarize", summarizeRouter);
 router.use("/events", eventsRouter);
 router.use("/settings", settingsRouter);
 router.use("/bookmarks", bookmarksRouter);
+router.use("/backup", backupRouter);
 
 export default router;

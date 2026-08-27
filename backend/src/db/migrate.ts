@@ -306,6 +306,38 @@ const MIGRATIONS: Migration[] = [
         ALTER TABLE pins_v5 RENAME TO pins;
       `);
     }
+  },
+
+  {
+    version: 6,
+    name: "fts5_search_index",
+    up: (database) => {
+      // FTS5 virtual table for instant full-text search across articles.
+      database.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+          title,
+          description,
+          content='articles',
+          content_rowid='id'
+        );
+
+        INSERT INTO articles_fts(rowid, title, description)
+          SELECT id, title, description FROM articles;
+
+        CREATE TRIGGER IF NOT EXISTS articles_fts_ai AFTER INSERT ON articles BEGIN
+          INSERT INTO articles_fts(rowid, title, description) VALUES (new.id, new.title, new.description);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS articles_fts_ad AFTER DELETE ON articles BEGIN
+          INSERT INTO articles_fts(articles_fts, rowid, title, description) VALUES('delete', old.id, old.title, old.description);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS articles_fts_au AFTER UPDATE ON articles BEGIN
+          INSERT INTO articles_fts(articles_fts, rowid, title, description) VALUES('delete', old.id, old.title, old.description);
+          INSERT INTO articles_fts(rowid, title, description) VALUES (new.id, new.title, new.description);
+        END;
+      `);
+    }
   }
 ];
 

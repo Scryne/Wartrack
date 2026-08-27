@@ -110,6 +110,78 @@ export function isCloudSyncPath(directoryPath: string): { isSyncPath: boolean; p
 }
 
 /**
+ * Verifies that a candidate path is strictly contained within an allowed base directory.
+ * Defends against:
+ *  - Parent directory traversal (../, ..\, /../, mixed slashes)
+ *  - Absolute path escapes outside base directory
+ *  - Prefix confusion (e.g. /backups_evil vs /backups)
+ *  - Symlink escapes (resolves realpath when files exist)
+ */
+export function isPathContained(parentDir: string, candidatePath: string): boolean {
+  const resolvedParent = path.resolve(parentDir);
+  const resolvedCandidate = path.resolve(candidatePath);
+
+  // 1. Path relative containment check
+  const rel = path.relative(resolvedParent, resolvedCandidate);
+  if (rel.startsWith("..") || path.isAbsolute(rel) || rel === "") {
+    return false;
+  }
+
+  // 2. Exact directory prefix boundary check (guarantees no prefix confusion like /backup vs /backup_evil)
+  const normalizedParent = resolvedParent.endsWith(path.sep) ? resolvedParent : resolvedParent + path.sep;
+  if (!resolvedCandidate.startsWith(normalizedParent)) {
+    return false;
+  }
+
+  // 3. Symlink escape check: if candidate exists on disk, check canonical realpath
+  try {
+    if (fs.existsSync(resolvedCandidate) && fs.existsSync(resolvedParent)) {
+      const realParent = fs.realpathSync(resolvedParent);
+      const realCandidate = fs.realpathSync(resolvedCandidate);
+      const realRel = path.relative(realParent, realCandidate);
+      if (realRel.startsWith("..") || path.isAbsolute(realRel)) {
+        return false;
+      }
+    }
+  } catch {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Resolves a backup identifier or path to an absolute path, ensuring it is strictly contained
+ * within the authorized backup directory.
+ */
+export function resolveSafeBackupPath(backupPathOrFilename: string, customBackupDir?: string): string {
+  if (!backupPathOrFilename || typeof backupPathOrFilename !== "string") {
+    throw new Error("Invalid backup path: must be a non-empty string.");
+  }
+
+  const backupDir = resolveBackupDir(customBackupDir);
+
+  // Strip any URL-encoding just in case
+  let decoded = backupPathOrFilename.trim();
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // ignore decode error
+  }
+
+  // If candidate is a simple filename or relative path, resolve inside backupDir
+  const candidate = path.isAbsolute(decoded)
+    ? path.resolve(decoded)
+    : path.resolve(backupDir, decoded);
+
+  if (!isPathContained(backupDir, candidate)) {
+    throw new Error(`PATH TRAVERSAL BLOCKED: Backup path "${backupPathOrFilename}" is outside the authorized backup directory.`);
+  }
+
+  return candidate;
+}
+
+/**
  * Resolves the active backup directory with security path normalization and cloud sync risk detection.
  */
 export function resolveBackupDir(customDir?: string): string {
@@ -392,10 +464,18 @@ export function listBackups(customDir?: string): BackupFileInfo[] {
  * Prohibits live in-process database replacement while the application connection is active.
  * Requires offline restore procedure or an unattached target path.
  */
-export function restoreBackup(backupPath: string, targetDbPath?: string): RestoreResult {
+export interface RestoreOptions {
+  allowedBackupDir?: string;
+}
+
+export function restoreBackup(
+  backupPath: string,
+  targetDbPath?: string,
+  options: RestoreOptions = {}
+): RestoreResult {
+  const resolvedBackup = resolveSafeBackupPath(backupPath, options.allowedBackupDir);
   const targetPath = targetDbPath ?? DATABASE_PATH;
   const resolvedTarget = path.resolve(targetPath);
-  const resolvedBackup = path.resolve(backupPath);
 
   // 1. FAIL-CLOSED GUARD: Prohibit live restore when targeting active database while db connection is open
   if (resolvedTarget === path.resolve(DATABASE_PATH) && db.open) {

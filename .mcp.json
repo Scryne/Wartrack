@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "shadcn": {
+      "command": "npx",
+      "args": ["shadcn@latest", "mcp"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest", "--autoConnect"]
+    },
+    "magic": {
+      "command": "npx",
+      "args": ["-y", "@21st-dev/magic@latest"],
+      "env": { "API_KEY": "${MAGIC_21ST_API_KEY}" }
+    }
+  }
+}
