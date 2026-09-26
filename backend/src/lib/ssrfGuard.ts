@@ -87,11 +87,16 @@ export interface UrlValidationResult {
   resolvedIp?: string;
 }
 
+export interface UrlShapeResult extends UrlValidationResult {
+  /** Set when the host is a name whose addresses still need checking. */
+  hostname?: string;
+}
+
 /**
- * Validates a target URL against SSRF attack vectors, private networks,
- * localhost, cloud metadata endpoints, and unsupported protocols.
+ * Everything about a URL that can be judged without DNS: scheme, embedded
+ * credentials, loopback/metadata host names and literal private IPs.
  */
-export async function validateSafeUrl(rawUrl: string): Promise<UrlValidationResult> {
+export function validateUrlShape(rawUrl: string): UrlShapeResult {
   if (!rawUrl || typeof rawUrl !== "string") {
     return { valid: false, reason: "URL must be a non-empty string" };
   }
@@ -143,25 +148,78 @@ export async function validateSafeUrl(rawUrl: string): Promise<UrlValidationResu
     return { valid: true, resolvedIp: cleanHost };
   }
 
-  // Resolve hostname via DNS to prevent DNS rebinding / private domain aliasing
+  return { valid: true, hostname: cleanHost };
+}
+
+/** First resolved address that lies in private/reserved space, or null. */
+function findPrivateAddress(records: dns.LookupAddress[]): dns.LookupAddress | null {
+  for (const record of records) {
+    if (record.family === 4 && isPrivateOrReservedIpv4(record.address)) return record;
+    if (record.family === 6 && isPrivateOrReservedIpv6(record.address)) return record;
+  }
+  return null;
+}
+
+/**
+ * Validates a target URL against SSRF attack vectors, private networks,
+ * localhost, cloud metadata endpoints, and unsupported protocols.
+ *
+ * This resolves the hostname to answer "is it safe?", but the answer only
+ * holds for that lookup: a later connection resolves again and may get a
+ * different address (DNS rebinding). Code that actually connects should use
+ * validateUrlShape() plus guardedLookup (see lib/safeFetch), which checks the
+ * very addresses the socket connects to.
+ */
+export async function validateSafeUrl(rawUrl: string): Promise<UrlValidationResult> {
+  const shape = validateUrlShape(rawUrl);
+  if (!shape.valid || !shape.hostname) return shape;
+  const host = shape.hostname;
+
   try {
-    const lookupResult = await dnsLookup(cleanHost, { all: true });
-    for (const record of lookupResult) {
-      if (record.family === 4 && isPrivateOrReservedIpv4(record.address)) {
-        return {
-          valid: false,
-          reason: `Hostname ${cleanHost} resolved to private IPv4 ${record.address}`
-        };
-      }
-      if (record.family === 6 && isPrivateOrReservedIpv6(record.address)) {
-        return {
-          valid: false,
-          reason: `Hostname ${cleanHost} resolved to private IPv6 ${record.address}`
-        };
-      }
+    const lookupResult = await dnsLookup(host, { all: true });
+    const blocked = findPrivateAddress(lookupResult);
+    if (blocked) {
+      return {
+        valid: false,
+        reason: `Hostname ${host} resolved to private IPv${blocked.family} ${blocked.address}`
+      };
     }
     return { valid: true, resolvedIp: lookupResult[0]?.address };
   } catch (err) {
-    return { valid: false, reason: `DNS lookup failed for hostname ${cleanHost}: ${String(err)}` };
+    return { valid: false, reason: `DNS lookup failed for hostname ${host}: ${String(err)}` };
   }
 }
+
+/**
+ * A `lookup` for net/tls connect options that refuses private addresses.
+ *
+ * The check runs on the addresses the socket is about to use, so there is no
+ * gap between validation and connection for a rebinding resolver to exploit,
+ * and each connection costs one DNS query instead of two. The second point is
+ * not cosmetic: getaddrinfo runs on libuv's four-thread pool, and with a slow
+ * resolver the doubled lookups for fifteen feeds queued long enough to push
+ * every connection past its timeout, so no feed was ever fetched.
+ */
+export const guardedLookup: net.LookupFunction = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...options, all: true }, (err, records) => {
+    if (err) {
+      callback(err, options.all ? [] : "", undefined);
+      return;
+    }
+    const blocked = findPrivateAddress(records);
+    if (blocked) {
+      const error: NodeJS.ErrnoException = new Error(
+        `SSRF Blocked: ${hostname} resolved to private IPv${blocked.family} ${blocked.address}`
+      );
+      error.code = "ESSRFBLOCKED";
+      callback(error, options.all ? [] : "", undefined);
+      return;
+    }
+    if (options.all) {
+      callback(null, records);
+      return;
+    }
+    const [first] = records;
+    callback(null, first.address, first.family);
+  });
+};

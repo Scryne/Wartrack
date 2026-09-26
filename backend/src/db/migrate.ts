@@ -338,6 +338,27 @@ const MIGRATIONS: Migration[] = [
         END;
       `);
     }
+  },
+
+  {
+    version: 7,
+    name: "clear_canned_rule_summaries",
+    up: (database) => {
+      // The summarizer's no-provider fallback used to store one of these fixed
+      // sentences as aiSummary. They describe no article, so they are removed
+      // and the articles re-enter the summarization queue.
+      database.exec(`
+        UPDATE articles
+           SET aiSummary = NULL
+         WHERE aiSummary IN (
+           'Kaynak habere göre bölgede askeri saldırı kaynaklı güvenlik baskısı sürüyor ve sivil etki riski öne çıkıyor.',
+           'Kaynak habere göre bölgede askeri hareketlilik ve saldırı odaklı güvenlik riski artış eğiliminde.',
+           'Kaynak habere göre diplomatik temaslar sürerken sahadaki gerilim tamamen düşmüş görünmüyor.',
+           'Kaynak habere göre enerji ve lojistik hatları üzerindeki baskı bölgesel risk seviyesini etkiliyor.',
+           'Kaynak habere göre bölgesel güvenlik ortamı dalgalı seyrediyor ve durum yakından izlenmeye devam ediyor.'
+         )
+      `);
+    }
   }
 ];
 

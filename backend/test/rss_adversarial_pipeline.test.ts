@@ -11,7 +11,10 @@ vi.mock("dns", async (importOriginal) => {
     "www.aljazeera.com": [{ address: "104.18.1.1", family: 4 }],
     "example.com": [{ address: "93.184.216.34", family: 4 }],
     "localhost.localdomain": [{ address: "127.0.0.1", family: 4 }],
-    "metadata.google.internal": [{ address: "169.254.169.254", family: 4 }]
+    "metadata.google.internal": [{ address: "169.254.169.254", family: 4 }],
+    // An innocent-looking public name whose record points inside the network:
+    // what a rebinding resolver hands out on the second query.
+    "rebind.example": [{ address: "10.0.0.5", family: 4 }]
   };
   const lookup = (host: string, options: unknown, callback?: (...args: unknown[]) => void) => {
     const done = (typeof options === "function" ? options : callback) as (...args: unknown[]) => void;
@@ -184,5 +187,39 @@ describe("ADVERSARIAL INGESTION PIPELINE & DATA BOUNDARY AUDIT", () => {
       expect(check.valid).toBe(false);
       expect(check.reason).toBeDefined();
     }
+  });
+
+  it("guardedLookup refuses private addresses and passes public ones in both lookup shapes", async () => {
+    const { guardedLookup } = await import("../src/lib/ssrfGuard");
+    const run = (host: string, all: boolean) =>
+      new Promise<{ err: NodeJS.ErrnoException | null; address: unknown }>((resolve) => {
+        guardedLookup(host, { all }, (err, address) => resolve({ err, address }));
+      });
+
+    const blocked = await run("rebind.example", false);
+    expect(blocked.err?.code).toBe("ESSRFBLOCKED");
+
+    const single = await run("example.com", false);
+    expect(single.err).toBeNull();
+    expect(single.address).toBe("93.184.216.34");
+
+    const all = await run("example.com", true);
+    expect(all.err).toBeNull();
+    expect(all.address).toEqual([{ address: "93.184.216.34", family: 4 }]);
+  });
+
+  it("safeFetch never dials a name that resolves to a private address", async () => {
+    const { validateUrlShape } = await import("../src/lib/ssrfGuard");
+    const { safeFetch } = await import("../src/lib/safeFetch");
+
+    // The name itself looks public, so a check on the URL alone lets it through;
+    // only the connect-time lookup can catch it.
+    expect(validateUrlShape("http://rebind.example/feed").valid).toBe(true);
+
+    const error = (await safeFetch("http://rebind.example/feed").catch((e: unknown) => e)) as Error & {
+      cause?: { code?: string };
+    };
+    expect(error).toBeInstanceOf(Error);
+    expect(error.cause?.code).toBe("ESSRFBLOCKED");
   });
 });

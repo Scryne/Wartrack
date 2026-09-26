@@ -4,7 +4,8 @@ import { extractGeoFromText } from '../lib/geoExtract';
 import { computeReliability } from './reliability.service';
 import { validateTurkishOutput } from '../lib/languageGuard';
 import { sqliteIsoNow, toIsoOrNull } from '../lib/time';
-import { validateSafeUrl } from '../lib/ssrfGuard';
+import { validateUrlShape } from '../lib/ssrfGuard';
+import { CONNECT_TIMEOUT_MS, safeFetch } from '../lib/safeFetch';
 
 export interface RssSource {
   name: string;
@@ -70,12 +71,22 @@ export interface Article {
   createdAt?: string;
 }
 
+export type ArticleScope = 'all' | 'theatre';
+
 export interface GetArticlesOpts {
   limit?: number;
   offset?: number;
   category?: string;
   search?: string;
   source?: string;
+  /**
+   * 'theatre' keeps only articles the gazetteer placed in the monitored region.
+   * World feeds (Guardian, BBC, Al Jazeera) mix in domestic politics, tech and
+   * culture; about half of a typical cycle has nothing to do with the theatre.
+   * The gazetteer only knows regional places, so "has coordinates" is the
+   * explainable test for "is about the region".
+   */
+  scope?: ArticleScope;
 }
 
 export interface SourceStats {
@@ -180,8 +191,13 @@ async function fetchSingleSource(source: RssSource): Promise<Article[]> {
     const guid = item.guid || item.link || `${source.name}-${item.pubDate}-${item.title?.slice(0, 20)}`;
     // toIsoOrNull, not new Date(x).toISOString(): an unparseable feed date
     // makes toISOString() throw RangeError, which rejects the whole source.
-    const pubDate =
-      toIsoOrNull(item.isoDate) ?? toIsoOrNull(item.pubDate) ?? new Date().toISOString();
+    //
+    // Clamped to now: Jerusalem Post labels Israeli local time as "GMT", so its
+    // items arrived up to three hours in the future and, sorted by pubDate,
+    // pinned themselves to the top of the feed until the clock caught up.
+    const nowIso = new Date().toISOString();
+    const parsedPubDate = toIsoOrNull(item.isoDate) ?? toIsoOrNull(item.pubDate) ?? nowIso;
+    const pubDate = parsedPubDate < nowIso ? parsedPubDate : nowIso;
     const title = item.title?.trim() ?? '(no title)';
     const description = cleanDesc(item.contentSnippet || item.content || '');
     const coords = extractGeoFromText(`${title} ${description}`);
@@ -219,8 +235,12 @@ function sleep(ms: number): Promise<void> {
  * fetch open indefinitely. fetchAllFeeds() runs all sources through
  * Promise.allSettled, so one hung source pins the whole ingestion cycle, and
  * runRssCycle's `rssJobRunning` guard then blocks every later cron tick.
+ *
+ * Kept above safeFetch's CONNECT_TIMEOUT_MS so a slow resolver fails as a
+ * connect timeout with a clear cause, and a connected feed still has time to
+ * send its body.
  */
-const FEED_FETCH_TIMEOUT_MS = 15_000;
+const FEED_FETCH_TIMEOUT_MS = CONNECT_TIMEOUT_MS + 15_000;
 
 /** A feed is text; anything this large is a misconfiguration or an attack. */
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
@@ -231,7 +251,9 @@ async function fetchFeedText(initialUrl: string, source: RssSource, attempt: num
   const MAX_REDIRECTS = 4;
 
   while (true) {
-    const safeCheck = await validateSafeUrl(currentUrl);
+    // Addresses are checked at connect time by safeFetch's guarded lookup;
+    // this rejects what is unsafe before any DNS query is made.
+    const safeCheck = validateUrlShape(currentUrl);
     if (!safeCheck.valid) {
       throw new Error(`SSRF Blocked: URL for ${source.name} is unsafe (${safeCheck.reason})`);
     }
@@ -240,7 +262,7 @@ async function fetchFeedText(initialUrl: string, source: RssSource, attempt: num
     const timeout = setTimeout(() => controller.abort(), FEED_FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(currentUrl, {
+      const response = await safeFetch(currentUrl, {
         headers: {
           'User-Agent': pickUserAgent(source, attempt),
           Accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.5',
@@ -419,6 +441,9 @@ export function getArticles(opts: GetArticlesOpts = {}) {
   if (opts.source) {
     conditions.push('source = @source');
     params.source = opts.source;
+  }
+  if (opts.scope === 'theatre') {
+    conditions.push('lat IS NOT NULL AND lng IS NOT NULL');
   }
   if (opts.search) {
     // Escape LIKE's own wildcards. Without this, searching for "100%" matched
