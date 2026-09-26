@@ -1,5 +1,12 @@
 # WARTRACKER — Independent Production Certification & Adversarial Engineering Audit
 
+> **Note (2026-09-26):** This is an internal, AI-assisted self-audit, not an independent
+> third-party certification, and its verdict should be read as such. The September 2026 audit
+> found and fixed defects it did not catch: the test suite erased the live database, RSS
+> ingestion fetched nothing on a slow resolver, CI had been failing since 2026-08-22, the map
+> basemap and four of eight live streams were dead, and a keyword fallback stored canned
+> sentences as AI summaries. Current, measured state: [`../DURUM.md`](../DURUM.md).
+
 ## 1. Executive Verdict
 
 **VERDICT: PRODUCTION READY WITH DOCUMENTED LIMITATIONS**
