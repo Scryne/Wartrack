@@ -19,7 +19,7 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /** Thrown on 401 so callers can distinguish auth failure from a network error. */
 export class ApiKeyError extends Error {
-  constructor(message = "Gecersiz veya eksik API anahtari") {
+  constructor(message = "Geçersiz veya eksik API anahtarı") {
     super(message);
     this.name = "ApiKeyError";
   }
@@ -37,8 +37,8 @@ function notifyUnauthorized(): void {
 
   showToast(
     useAuthStore.getState().hasApiKey()
-      ? "API anahtari gecersiz. Ayarlar > Guvenlik bolumunden kontrol edin."
-      : "API anahtari gerekli. Ayarlar > Guvenlik bolumunden girin.",
+      ? "API anahtarı sunucudakiyle eşleşmiyor. Ayarlar > Erişim bölümünden kontrol edin."
+      : "Bu işlem için API anahtarı gerekli. Ayarlar > Erişim bölümünden girin.",
     "error"
   );
 }

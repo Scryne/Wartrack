@@ -43,7 +43,7 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
 
     const res = await apiFetch(path, init);
     if (!res.ok) {
-      throw new Error('Bookmark istegi basarisiz');
+      throw new Error('Kaydetme isteği başarısız');
     }
 
     await get().fetchBookmarks();

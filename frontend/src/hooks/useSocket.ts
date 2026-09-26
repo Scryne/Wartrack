@@ -19,6 +19,7 @@ export function useSocket(): void {
     const onInit = (payload: { threat_level: 1 | 2 | 3 | 4 | 5 }) => {
       useEventStore.getState().setThreatLevel(payload.threat_level);
       void useEventStore.getState().fetchStats();
+      void useEventStore.getState().fetchThreat();
     };
 
     const onArticleNew = (article: Article) => {
@@ -93,6 +94,7 @@ export function useSocket(): void {
 
     const onStatsUpdate = () => {
       void useEventStore.getState().fetchStats();
+      void useEventStore.getState().fetchThreat();
     };
 
     const onThreatUpdate = (data: { level: 1 | 2 | 3 | 4 | 5 }) => {

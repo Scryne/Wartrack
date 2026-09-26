@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Newspaper, Siren } from 'lucide-react';
 import StatusBar from './components/StatusBar';
 import SummaryTicker from './components/SummaryTicker';
 import SettingsModal from './components/SettingsModal';
@@ -10,6 +11,7 @@ import { useBookmarkStore } from './stores/useBookmarkStore';
 import { useOverlayStore } from './stores/useOverlayStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { apiFetch } from './lib/api';
+import { describeBriefSource } from './lib/brief';
 
 import { DesignTokensView } from './components/DesignTokensView';
 
@@ -20,25 +22,10 @@ const ThreatMeter = lazy(() => import('./panels/ThreatMeter'));
 const EventLog = lazy(() => import('./panels/EventLog'));
 const BRIEF_CACHE_MS = 120000;
 
-const Skeleton = ({ label }: { label: string }) => (
-  <div
-    style={{
-      width: '100%',
-      height: '100%',
-      background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 'var(--radius-lg)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'var(--font-mono)',
-      fontSize: 10,
-      color: 'var(--color-fg-subtle)',
-      letterSpacing: 2
-    }}
-  >
-    {label}
-  </div>
+// Placeholders take the final size of what they stand in for; a full-height
+// placeholder collapsing to the real card was the page's main layout shift.
+const Skeleton = ({ label, className = '' }: { label: string; className?: string }) => (
+  <div className={`panel wt-skeleton ${className}`} aria-busy="true" aria-label={`${label} yükleniyor`} />
 );
 
 const App = () => {
@@ -47,7 +34,6 @@ const App = () => {
     (window.location.pathname === '/design-tokens' || window.location.hash === '#design-tokens');
 
   useSocket();
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
   const [sidebarTab, setSidebarTab] = useState<'feed' | 'events'>('feed');
   const fetchBookmarks = useBookmarkStore((s) => s.fetchBookmarks);
   const [showBrief, setShowBrief] = useState(false);
@@ -87,22 +73,18 @@ const App = () => {
 
       const json = await res.json();
       setBriefText(String(json?.brief ?? ''));
-      setBriefModel(String(json?.model ?? ''));
+      setBriefModel(describeBriefSource(String(json?.model ?? ''), json?.modelName ? String(json.modelName) : undefined));
       setBriefGeneratedAt(String(json?.generatedAt ?? new Date().toISOString()));
       briefFetchedAtRef.current = Date.now();
     } catch (err) {
       if (controller.signal.aborted) return;
 
+      // Say what failed, not what the brief would have said: the previous
+      // text reported "no critical event" whenever the request itself failed.
       const reason = err instanceof Error && err.message ? err.message : 'Servis yanıt vermedi';
       setBriefText(`## SON 6 SAATİN ÖZETİ
-- AI durum özeti alınamadı.
-
-## KRİTİK GELİŞME
-Kritik düzeyde olay tespit edilmedi.
-
-## TREND ANALİZİ
-Durum özeti servisi geçici olarak erişilemez (${reason}).`);
-      setBriefModel('none');
+- Durum özeti alınamadı: ${reason}. Sunucu bağlantısını ve API anahtarını kontrol edip Yenile'ye basın.`);
+      setBriefModel(describeBriefSource('error'));
       setBriefGeneratedAt(new Date().toISOString());
     } finally {
       if (briefAbortRef.current === controller) {
@@ -124,16 +106,13 @@ Durum özeti servisi geçici olarak erişilemez (${reason}).`);
   }, []);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('wartracker-theme');
-    if (savedTheme && savedTheme !== 'dark') {
-      document.documentElement.setAttribute('data-theme', savedTheme);
+    // The NVG/FLIR theme picker had no styles behind it and was removed;
+    // drop the stored choice so it cannot resurface as a stray attribute.
+    try {
+      localStorage.removeItem('wartracker-theme');
+    } catch {
+      // storage unavailable (private mode): nothing to clean
     }
-  }, []);
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 1024);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   useEffect(() => {
@@ -177,33 +156,14 @@ Durum özeti servisi geçici olarak erişilemez (${reason}).`);
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100vw',
-        height: '100vh',
-        overflow: 'hidden',
-        background: 'var(--bg-void)',
-        padding: 'var(--gap)',
-        gap: 'var(--gap)'
-      }}
-    >
+    <div className="wt-app">
       <StatusBar />
       <SettingsModal />
 
-      <div
-        style={{
-          display: 'flex',
-          flex: 1,
-          gap: 'var(--gap)',
-          minHeight: 0,
-          flexDirection: isMobile ? 'column' : 'row'
-        }}
-      >
+      <main className="wt-main">
         <ErrorBoundary>
-          <Suspense fallback={<Skeleton label="HARITA" />}>
-            <div style={{ flex: isMobile ? '1 1 auto' : '2.1', minWidth: 0, minHeight: isMobile ? 280 : 0 }}>
+          <Suspense fallback={<Skeleton label="Harita" className="wt-main-map" />}>
+            <div className="wt-main-map">
               <MapPanel
                 showBrief={showBrief}
                 briefLoading={briefLoading}
@@ -217,74 +177,53 @@ Durum özeti servisi geçici olarak erişilemez (${reason}).`);
           </Suspense>
         </ErrorBoundary>
 
-        <div style={{ flex: isMobile ? '1 1 auto' : '1.35', minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'var(--gap)' }}>
+        <div className="wt-main-rail">
           <ErrorBoundary>
-            <Suspense fallback={<Skeleton label="TEHDİT" />}>
+            <Suspense fallback={<Skeleton label="Tehdit seviyesi" className="wt-threat" />}>
               <ThreatMeter />
             </Suspense>
           </ErrorBoundary>
 
-          <ErrorBoundary>
-            <Suspense fallback={<Skeleton label="YAYIN" />}>
-              <div style={{ height: isMobile ? 160 : 190, flexShrink: 0, minHeight: 0 }}>
+          <div className="wt-main-media">
+            <ErrorBoundary>
+              <Suspense fallback={<Skeleton label="Canlı yayın" />}>
                 <MediaPanel />
-              </div>
-            </Suspense>
-          </ErrorBoundary>
+              </Suspense>
+            </ErrorBoundary>
+          </div>
 
-          {/* Right sidebar tab selector */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 4,
-              background: 'var(--bg-elevated)',
-              padding: 3,
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border)',
-              flexShrink: 0
-            }}
-          >
+          <div className="segment-container" role="tablist" aria-label="Sağ panel" style={{ flexShrink: 0 }}>
             <button
-              className={sidebarTab === 'feed' ? 'btn-primary' : 'btn-ghost'}
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === 'feed'}
+              className={`segment-item${sidebarTab === 'feed' ? ' segment-item-active' : ''}`}
               onClick={() => setSidebarTab('feed')}
-              style={{
-                flex: 1,
-                padding: '4px 8px',
-                fontSize: 10,
-                fontFamily: 'var(--font-mono)',
-                letterSpacing: 1
-              }}
             >
-              ◈ HABER AKIŞI
+              <Newspaper size={14} strokeWidth={1.75} aria-hidden="true" />
+              Haber akışı
             </button>
             <button
-              className={sidebarTab === 'events' ? 'btn-primary' : 'btn-ghost'}
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === 'events'}
+              className={`segment-item${sidebarTab === 'events' ? ' segment-item-active' : ''}`}
               onClick={() => setSidebarTab('events')}
-              style={{
-                flex: 1,
-                padding: '4px 8px',
-                fontSize: 10,
-                fontFamily: 'var(--font-mono)',
-                letterSpacing: 1
-              }}
             >
-              ⚡ KRİTİK OLAYLAR
+              <Siren size={14} strokeWidth={1.75} aria-hidden="true" />
+              Kritik olaylar
             </button>
           </div>
 
-          <ErrorBoundary>
-            <Suspense fallback={<Skeleton label={sidebarTab === 'feed' ? 'HABERLER' : 'OLAYLAR'} />}>
-              <div style={{ flex: 1, minHeight: 0 }}>
-                {sidebarTab === 'feed' ? (
-                  <FeedPanel onOpenBrief={openBrief} />
-                ) : (
-                  <EventLog />
-                )}
-              </div>
-            </Suspense>
-          </ErrorBoundary>
+          <div className="wt-main-feed">
+            <ErrorBoundary>
+              <Suspense fallback={<Skeleton label={sidebarTab === 'feed' ? 'Haberler' : 'Kritik olaylar'} />}>
+                {sidebarTab === 'feed' ? <FeedPanel onOpenBrief={openBrief} /> : <EventLog />}
+              </Suspense>
+            </ErrorBoundary>
+          </div>
         </div>
-      </div>
+      </main>
 
       <SummaryTicker />
       <CommandPalette open={commandPaletteOpen} onClose={closeCommandPalette} />

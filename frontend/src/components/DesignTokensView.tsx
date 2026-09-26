@@ -120,9 +120,9 @@ export const DesignTokensView: React.FC<DesignTokensViewProps> = ({ onClose }) =
           </h2>
           <div style={{ maxWidth: 400 }}>
             <div className="segment-container">
-              <button className="segment-item segment-item-active">◈ HABER AKIŞI</button>
-              <button className="segment-item">⚡ KRİTİK OLAYLAR</button>
-              <button className="segment-item">📊 METRİKLER</button>
+              <button className="segment-item segment-item-active">Haber akışı</button>
+              <button className="segment-item">Kritik olaylar</button>
+              <button className="segment-item">Sistem</button>
             </div>
           </div>
         </section>

@@ -9,6 +9,9 @@ export interface Article {
   pubDate: string;
   source: string;
   category: string;
+  /** Set when the gazetteer placed the story in the monitored region. */
+  lat?: number | null;
+  lng?: number | null;
   aiSummary?: string;
   reliabilityScore?: number;
   confidenceLabel?: 'Düşük' | 'Orta' | 'Yüksek';

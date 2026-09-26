@@ -1,113 +1,85 @@
-import { useMemo } from 'react';
+import { useEffect } from 'react';
+import { TrendingDown, TrendingUp, MoveRight } from 'lucide-react';
 import { useEventStore } from '../stores/useEventStore';
-import { isAtOrAfter } from '../lib/time';
+import { CONFIDENCE_LABEL, THREAT_SCALE, TREND_LABEL } from '../lib/threat';
 
-const LEVELS = {
-  1: { label: 'DÜŞÜK', color: '#00D084', bg: 'rgba(0,208,132,0.06)' },
-  2: { label: 'ILIMAN', color: '#7CB342', bg: 'rgba(124,179,66,0.06)' },
-  3: { label: 'GERİLİM', color: '#F5A623', bg: 'rgba(245,166,35,0.08)' },
-  4: { label: 'YÜKSEK', color: '#FF6B00', bg: 'rgba(255,107,0,0.08)' },
-  5: { label: 'KRİTİK', color: '#FF3B3B', bg: 'rgba(255,59,59,0.12)' }
+/** The analysis is cheap to compute server-side; one minute keeps it honest. */
+const THREAT_POLL_MS = 60_000;
+
+const TREND_ICON = {
+  ESCALATING: TrendingUp,
+  STABLE: MoveRight,
+  'DE-ESCALATING': TrendingDown
 } as const;
 
 function ThreatMeter() {
   const threatLevel = useEventStore((s) => s.threatLevel);
-  const events = useEventStore((s) => s.events);
-  const level = LEVELS[threatLevel] ?? LEVELS[1];
+  const threat = useEventStore((s) => s.threat);
+  const fetchThreat = useEventStore((s) => s.fetchThreat);
+  const scale = THREAT_SCALE[threatLevel];
 
-  const eventCount = useMemo(() => {
-    const cutoff = Date.now() - 60 * 60 * 1000;
-    return events.filter((e) => isAtOrAfter(e.createdAt, cutoff)).length;
-  }, [events]);
+  useEffect(() => {
+    void fetchThreat();
+    const timer = window.setInterval(() => void fetchThreat(), THREAT_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [fetchThreat]);
 
-  const critCount = useMemo(() => {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    return events.filter((e) => Number(e.severity) >= 4 && isAtOrAfter(e.createdAt, cutoff)).length;
-  }, [events]);
+  // The driver that set the level comes first; the rest are context.
+  const primaryDriver = threat?.drivers[0]?.description;
+  const TrendIcon = TREND_ICON[threat?.temporalTrend ?? 'STABLE'];
 
   return (
     <section
-      className="panel"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: '10px 14px',
-        minHeight: 92,
-        maxHeight: 105,
-        position: 'relative',
-        overflow: 'hidden',
-        background: level.bg,
-        border: `1px solid ${level.color}33`,
-        animation: threatLevel === 5 ? 'blink-red 2s infinite' : 'none'
-      }}
+      className="panel wt-threat"
+      style={{ borderColor: `color-mix(in srgb, ${scale.color} 35%, var(--color-border))`, background: scale.subtle }}
+      aria-labelledby="wt-threat-title"
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: 1.5 }}>
-          ◈ TAKTİK TEHDİT SEVİYESİ
-        </span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: level.color, letterSpacing: 0.5 }}>
-          Son 24s: {critCount} kritik olay
-        </span>
+      <div className="wt-threat-head">
+        <h2 id="wt-threat-title" className="wt-eyebrow">
+          Tehdit seviyesi
+        </h2>
+        {threat ? (
+          <span className="wt-eyebrow" title="Çok kaynaklı teyit kümelerine göre">
+            Güven: {CONFIDENCE_LABEL[threat.confidence]}
+          </span>
+        ) : null}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <span
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 56,
-            lineHeight: 0.85,
-            color: level.color,
-            textShadow: `0 0 24px ${level.color}66`
-          }}
-        >
-          {threatLevel}
-        </span>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 20,
-              letterSpacing: 2,
-              color: level.color,
-              lineHeight: 1
-            }}
-          >
-            {level.label}
+      <div className="wt-threat-body">
+        <div className="wt-threat-level">
+          <span className="wt-threat-value" style={{ color: scale.color }}>
+            {threatLevel}
           </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-secondary)' }}>
-            Son 1s: {eventCount} yeni olay
+          <span className="wt-threat-label" style={{ color: scale.color }}>
+            {scale.label}
           </span>
         </div>
+
+        {/* Same shape before and after the first analysis: no layout shift. */}
+        <dl className="wt-threat-metrics" aria-busy={!threat}>
+          <div>
+            <dt>Son 1 sa</dt>
+            <dd>{threat ? `${threat.metrics.criticalEventsLast1h} kritik` : '—'}</dd>
+          </div>
+          <div>
+            <dt>Son 24 sa</dt>
+            <dd>{threat ? `${threat.metrics.criticalEventsLast24h} kritik` : '—'}</dd>
+          </div>
+          <div>
+            <dt>Trend</dt>
+            <dd>
+              {threat ? <TrendIcon size={13} strokeWidth={1.75} aria-hidden="true" /> : null}
+              {threat ? TREND_LABEL[threat.temporalTrend] : '—'}
+            </dd>
+          </div>
+        </dl>
       </div>
 
-      <div
-        style={{
-          position: 'absolute',
-          right: 14,
-          bottom: 12,
-          display: 'flex',
-          alignItems: 'flex-end',
-          gap: 3
-        }}
-      >
-        {[10, 16, 22, 28, 34].map((h, idx) => (
-          <div
-            key={h}
-            style={{
-              width: 5,
-              borderRadius: 1,
-              height: h,
-              background: idx < threatLevel ? level.color : 'var(--border-strong)',
-              boxShadow: idx < threatLevel ? `0 0 6px ${level.color}` : 'none',
-              animation: idx < threatLevel ? 'pulse-dot 1.4s infinite' : 'none'
-            }}
-          />
-        ))}
-      </div>
+      <p className="wt-threat-driver" title={threat?.drivers.map((d) => d.description).join('\n')}>
+        {primaryDriver ?? 'Analiz bekleniyor…'}
+      </p>
     </section>
   );
 }
 
 export default ThreatMeter;
-

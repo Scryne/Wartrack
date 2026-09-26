@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type { Event } from "../types";
 import { apiFetch } from "../lib/api";
-import { isAtOrAfter } from "../lib/time";
 
 export interface DashboardStats {
   articles: number;
@@ -10,42 +9,59 @@ export interface DashboardStats {
   summaries: number;
 }
 
+export type ThreatLevel = 1 | 2 | 3 | 4 | 5;
+
+/** Mirrors backend ExplainableThreatAnalysis (services/threat.service.ts). */
+export interface ThreatAnalysis {
+  threatLevel: ThreatLevel;
+  threatLabel: string;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  drivers: { factor: string; weight: number; description: string }[];
+  metrics: {
+    criticalEventsLast1h: number;
+    criticalEventsLast24h: number;
+    totalEventsLast24h: number;
+    recent6hCount: number;
+    prior6hCount: number;
+    activeHotspotsCount: number;
+    corroboratedClustersCount: number;
+  };
+  temporalTrend: "ESCALATING" | "STABLE" | "DE-ESCALATING";
+  calculatedAt: string;
+}
+
 interface EventStoreState {
   events: Event[];
   unreadCount: number;
-  threatLevel: 1 | 2 | 3 | 4 | 5;
+  threatLevel: ThreatLevel;
+  /**
+   * The server's explainable analysis is the only source of the threat level.
+   * The client used to derive its own level from whatever events happened to
+   * be loaded, which was none until the events tab was opened: the header
+   * read 5 while the panel under it counted 0 critical events.
+   */
+  threat: ThreatAnalysis | null;
   stats: DashboardStats;
   loading: boolean;
 
   fetchEvents: () => Promise<void>;
   fetchStats: () => Promise<void>;
+  fetchThreat: () => Promise<void>;
   addEvent: (event: Event) => void;
   markAllRead: () => void;
-  setThreatLevel: (level: 1 | 2 | 3 | 4 | 5) => void;
-  computeThreatLevel: () => void;
+  setThreatLevel: (level: ThreatLevel) => void;
   clearAll: () => void;
 }
 
-function calcThreatLevel(events: Event[]): 1 | 2 | 3 | 4 | 5 {
-  // Compare parsed instants, not strings. The previous string comparison
-  // against an ISO cutoff was false for every same-day event, pinning the
-  // threat level to 1 outside a ~1 hour window after UTC midnight.
-  const oneHourAgo = Date.now() - 60 * 60 * 1000;
-  const highSevCount = events.filter(
-    (e) => Number(e.severity) >= 4 && isAtOrAfter(e.createdAt, oneHourAgo)
-  ).length;
-
-  if (highSevCount === 0) return 1;
-  if (highSevCount <= 2) return 2;
-  if (highSevCount <= 5) return 3;
-  if (highSevCount <= 10) return 4;
-  return 5;
-}
+/** Coalesces bursts of live events into one re-analysis. */
+const THREAT_REFRESH_DEBOUNCE_MS = 1_500;
+let threatRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useEventStore = create<EventStoreState>((set, get) => ({
   events: [],
   unreadCount: 0,
   threatLevel: 1,
+  threat: null,
   stats: { articles: 0, events: 0, pins: 0, summaries: 0 },
   loading: false,
 
@@ -57,7 +73,6 @@ export const useEventStore = create<EventStoreState>((set, get) => ({
       const json = await res.json();
       const events = (json.data ?? []) as Event[];
       set({ events, loading: false });
-      get().computeThreatLevel();
     } catch {
       set({ loading: false });
     }
@@ -82,7 +97,23 @@ export const useEventStore = create<EventStoreState>((set, get) => ({
       events: [event, ...state.events],
       unreadCount: state.unreadCount + 1,
     }));
-    get().computeThreatLevel();
+    if (threatRefreshTimer) clearTimeout(threatRefreshTimer);
+    threatRefreshTimer = setTimeout(() => {
+      threatRefreshTimer = null;
+      void get().fetchThreat();
+    }, THREAT_REFRESH_DEBOUNCE_MS);
+  },
+
+  fetchThreat: async () => {
+    try {
+      const res = await apiFetch(`/api/events/threat-analysis`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const threat = (await res.json()) as ThreatAnalysis;
+      set({ threat, threatLevel: threat.threatLevel });
+    } catch {
+      // Keep the last known analysis; the panel shows its timestamp, so a
+      // stale reading is visible rather than silently replaced by a guess.
+    }
   },
 
   markAllRead: () => {
@@ -90,11 +121,6 @@ export const useEventStore = create<EventStoreState>((set, get) => ({
   },
 
   setThreatLevel: (level) => {
-    set({ threatLevel: level });
-  },
-
-  computeThreatLevel: () => {
-    const level = calcThreatLevel(get().events);
     set({ threatLevel: level });
   },
 

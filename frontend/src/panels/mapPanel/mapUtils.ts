@@ -2,21 +2,40 @@ import L from "leaflet";
 import { useBookmarkStore } from "../../stores/useBookmarkStore";
 import { useWatchlistStore } from "../../stores/useWatchlistStore";
 import type { NewsPin } from "../../stores/useMapStore";
-import type { Workspace } from "../../types";
 import { toSafeHref } from "../../lib/safeUrl";
 
-export const WORKSPACES: Workspace[] = [
-  { id: "iran-israel", name: "İRAN·İSRAİL", center: [32.0, 36.5], zoom: 6 },
-  { id: "red-sea", name: "KIZILDENİZ", center: [18.0, 43.0], zoom: 6 },
-  { id: "syria", name: "SURİYE", center: [35.0, 38.5], zoom: 7 }
-];
+export { WORKSPACES } from "../../data/workspaces";
 
+/** Marker colours come from the chart tokens (index.css), not literals. */
 export const CAT_COLOR: Record<string, string> = {
-  haber: "rgba(148,163,184,0.8)",
-  bölge: "#F5A623",
-  savunma: "#60A5FA",
-  analiz: "#A78BFA"
+  haber: "var(--color-chart-6)",
+  bölge: "var(--color-chart-2)",
+  savunma: "var(--color-chart-4)",
+  analiz: "var(--color-chart-3)"
 };
+
+export const PIN_COLOR: Record<string, string> = {
+  strike: "var(--color-chart-1)",
+  movement: "var(--color-chart-2)",
+  nuclear: "var(--color-chart-3)",
+  naval: "var(--color-chart-4)",
+  air: "var(--color-chart-5)",
+  info: "var(--color-fg-muted)"
+};
+
+export { tokenColor } from "../../lib/tokens";
+
+/** WCAG 2.5.8: the dot stays small, the clickable area does not. */
+const HIT = 24;
+
+function dot(size: number, color: string, extra = ""): L.DivIcon {
+  return L.divIcon({
+    html: `<span class="wt-marker-hit"><span class="wt-marker ${extra}" style="--marker-size:${size}px;--marker-color:${color}"></span></span>`,
+    className: "",
+    iconSize: [HIT, HIT],
+    iconAnchor: [HIT / 2, HIT / 2]
+  });
+}
 
 const CRITICAL_KW = [
   "missile strike",
@@ -74,62 +93,18 @@ export function isCritical(title: string): boolean {
 }
 
 export function createNewsPinIcon(pin: NewsPin): L.DivIcon {
-  const isSaved = useBookmarkStore.getState().isBookmarked(pin.id);
-  if (isSaved) {
-    return L.divIcon({
-      html: "<div style='width:12px;height:12px;border-radius:50%;background:#A78BFA;border:1px solid rgba(255,255,255,0.35)'></div>",
-      className: "",
-      iconSize: [12, 12],
-      iconAnchor: [6, 6]
-    });
+  if (useBookmarkStore.getState().isBookmarked(pin.id)) {
+    return dot(12, "var(--color-accent)", "wt-marker-saved");
   }
-
-  const watchMatches = useWatchlistStore.getState().matches(pin.title);
-  const isWatched = watchMatches.length > 0;
-  const crit = isCritical(pin.title);
-
-  if (isWatched) {
-    return L.divIcon({
-      html: "<div style='position:relative;width:14px;height:14px'><div style='position:absolute;left:0;top:0;width:14px;height:14px;border-radius:50%;border:2px solid rgba(245,166,35,0.55)'></div><div style='position:absolute;left:3px;top:3px;width:8px;height:8px;border-radius:50%;background:#F5A623'></div></div>",
-      className: "",
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
+  if (useWatchlistStore.getState().matches(pin.title).length > 0) {
+    return dot(12, "var(--color-warning)", "wt-marker-ring");
   }
-
-  const color = crit ? "#FF4444" : CAT_COLOR[pin.category] ?? "rgba(148,163,184,0.8)";
-
-  if (!crit) {
-    return L.divIcon({
-      html: `<div style="width:8px;height:8px;border-radius:50%;background:${color};border:1px solid rgba(255,255,255,0.25);opacity:0.85"></div>`,
-      className: "",
-      iconSize: [8, 8],
-      iconAnchor: [4, 4]
-    });
+  if (isCritical(pin.title)) {
+    return dot(12, "var(--color-danger)", "wt-marker-ring");
   }
-
-  return L.divIcon({
-    html: `<div style="position:relative;width:16px;height:16px"><div style="position:absolute;left:0;top:0;width:16px;height:16px;border-radius:50%;border:1px solid #FF4444;opacity:0.4;animation:blink-red 1.8s ease-in-out infinite"></div><div style="position:absolute;left:4px;top:4px;width:8px;height:8px;border-radius:50%;background:#FF4444"></div></div>`,
-    className: "",
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
-  });
+  return dot(9, CAT_COLOR[pin.category] ?? CAT_COLOR.haber);
 }
 
 export function manualIcon(category: string): L.DivIcon {
-  const palette: Record<string, string> = {
-    strike: "#FF3B3B",
-    movement: "#F5A623",
-    nuclear: "#9B6DFF",
-    naval: "#00AAFF",
-    air: "#00D084",
-    info: "rgba(255,255,255,0.65)"
-  };
-  const color = palette[category] ?? palette.info;
-  return L.divIcon({
-    className: "",
-    html: `<div style="width:11px;height:11px;border-radius:50%;background:${color};border:1px solid rgba(255,255,255,0.45)"></div>`,
-    iconSize: [11, 11],
-    iconAnchor: [5.5, 5.5]
-  });
+  return dot(11, PIN_COLOR[category] ?? PIN_COLOR.info, "wt-marker-manual");
 }

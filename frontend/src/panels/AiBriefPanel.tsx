@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { RefreshCw, Sparkles, X } from 'lucide-react';
 import { hasDisallowedScript, sanitizeTextOutput } from '../lib/textGuard';
 
 interface BriefSection {
@@ -18,17 +20,19 @@ interface AiBriefPanelProps {
 }
 
 const SECTION_META: Record<BriefSection["key"], { title: string; fallback: string }> = {
+  // Fallbacks describe the missing text, never the world: an empty section
+  // used to read "Kritik düzeyde olay tespit edilmedi", a claim nobody made.
   summary: {
-    title: "SON 6 SAATİN ÖZETİ",
-    fallback: "Özet metni henüz oluşturulmadı."
+    title: "Son 6 saatin özeti",
+    fallback: "Bu bölüm için metin gelmedi."
   },
   critical: {
-    title: "KRİTİK GELİŞME",
-    fallback: "Kritik düzeyde olay tespit edilmedi."
+    title: "Kritik gelişme",
+    fallback: "Bu bölüm için metin gelmedi."
   },
   trend: {
-    title: "TREND ANALİZİ",
-    fallback: "Trend analizi için yeterli veri bulunmuyor."
+    title: "Trend",
+    fallback: "Bu bölüm için metin gelmedi."
   }
 };
 
@@ -97,175 +101,72 @@ function AiBriefPanel({ open, loading, brief, model, generatedAt, onClose, onRef
     ? new Date(generatedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", hour12: false })
     : "--:--";
 
-  return (
-    <aside
-      style={{
-        position: "absolute",
-        top: 0,
-        right: 0,
-        height: "100%",
-        width: 380,
-        maxWidth: "100%",
-        zIndex: 'var(--z-map-panels)',
-        background: "rgba(4,9,18,0.97)",
-        backdropFilter: "blur(24px)",
-        WebkitBackdropFilter: "blur(24px)",
-        borderLeft: "1px solid var(--border-strong)",
-        transform: open ? "translateX(0)" : "translateX(100%)",
-        transition: "transform 0.25s ease-out",
-        display: "flex",
-        flexDirection: "column",
-        pointerEvents: open ? "auto" : "none"
-      }}
-    >
-      <div
-        style={{
-          height: 42,
-          flexShrink: 0,
-          borderBottom: "1px solid var(--border)",
-          padding: "0 10px 0 12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between"
-        }}
-      >
-        <span style={{ fontFamily: "var(--font-display)", fontSize: 14, letterSpacing: 1.2 }}>🤖 AI DURUM ÖZETİ</span>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              padding: "3px 6px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)",
-              color: "#A78BFA",
-              textTransform: "uppercase",
-              letterSpacing: 0.6
-            }}
-          >
-            {model || "--"}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              width: 22,
-              height: 22,
-              border: "none",
-              background: "transparent",
-              color: "var(--text-secondary)",
-              cursor: "pointer",
-              fontSize: 16,
-              lineHeight: "22px"
-            }}
-          >
-            ×
-          </button>
-        </div>
-      </div>
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column" }}>
+  return (
+    <aside className="wt-brief" data-open={open} aria-hidden={!open} aria-labelledby="wt-brief-title">
+      <header className="wt-brief-header">
+        <h2 id="wt-brief-title" className="wt-brief-title">
+          <Sparkles size={15} strokeWidth={1.75} aria-hidden="true" />
+          Durum özeti
+        </h2>
+        <button type="button" className="btn-ghost wt-icon-button" onClick={onClose} aria-label="Durum özetini kapat" tabIndex={open ? 0 : -1}>
+          <X size={16} strokeWidth={1.75} />
+        </button>
+      </header>
+
+      <div className="wt-brief-body" aria-live="polite" aria-busy={loading}>
         {loading ? (
-          <div
-            style={{
-              flex: 1,
-              minHeight: 220,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10
-            }}
-          >
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                border: "2px solid rgba(255,255,255,0.2)",
-                borderTopColor: "var(--accent)",
-                animation: "spin 0.75s linear infinite"
-              }}
-            />
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-secondary)", letterSpacing: 0.4 }}>
-              Analiz ediliyor...
-            </span>
+          <div className="wt-brief-loading">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="wt-brief-section wt-skeleton" style={{ height: i === 0 ? 148 : 76 }} />
+            ))}
           </div>
         ) : (
-          <>
-            {sections.map((section) => (
-              <div
-                key={section.key}
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  padding: 12,
-                  marginBottom: 10
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: 13,
-                    letterSpacing: 1,
-                    color: "var(--accent)",
-                    marginBottom: 6
-                  }}
-                >
-                  {section.title}
-                </div>
+          sections.map((section) => (
+            <section key={section.key} className="wt-brief-section" data-kind={section.key}>
+              <h3 className="wt-brief-section-title">{section.title}</h3>
 
-                {/* Keyed by position, not content: model output can legitimately
-                    repeat a line, and duplicate keys break reconciliation. */}
-                {section.bullets.length > 0 ? (
-                  <ul style={{ margin: 0, paddingLeft: 15, color: "var(--text-primary)", fontSize: 12, lineHeight: 1.55 }}>
-                    {section.bullets.map((item, idx) => (
-                      <li key={`${section.key}-bullet-${idx}`}>{item}</li>
-                    ))}
-                  </ul>
-                ) : null}
+              {/* Keyed by position, not content: model output can legitimately
+                  repeat a line, and duplicate keys break reconciliation. */}
+              {section.bullets.length > 0 ? (
+                <ul className="wt-brief-list">
+                  {section.bullets.map((item, idx) => (
+                    <li key={`${section.key}-bullet-${idx}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
 
-                {section.paragraphs.map((paragraph, idx) => (
-                  <p key={`${section.key}-para-${idx}`} style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.55, marginTop: 6 }}>
-                    {paragraph}
-                  </p>
-                ))}
+              {section.paragraphs.map((paragraph, idx) => (
+                <p key={`${section.key}-para-${idx}`} className="wt-brief-text">
+                  {paragraph}
+                </p>
+              ))}
 
-                {section.bullets.length === 0 && section.paragraphs.length === 0 ? (
-                  <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.55 }}>{SECTION_META[section.key].fallback}</p>
-                ) : null}
-              </div>
-            ))}
-
-            <div style={{ marginTop: "auto", paddingTop: 4 }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>
-                Oluşturulma: {generatedText} · {model || "-"}
-              </div>
-              <button
-                type="button"
-                onClick={onRefresh}
-                disabled={loading}
-                style={{
-                  width: "100%",
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: loading ? "var(--text-muted)" : "var(--text-secondary)",
-                  borderRadius: "var(--radius-sm)",
-                  height: 30,
-                  cursor: loading ? "not-allowed" : "pointer",
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  letterSpacing: 0.6,
-                  opacity: loading ? 0.7 : 1
-                }}
-              >
-                {loading ? "Analiz Ediliyor..." : "Yeniden Analiz Et"}
-              </button>
-            </div>
-          </>
+              {section.bullets.length === 0 && section.paragraphs.length === 0 ? (
+                <p className="wt-brief-text wt-brief-text-muted">{SECTION_META[section.key].fallback}</p>
+              ) : null}
+            </section>
+          ))
         )}
       </div>
+
+      <footer className="wt-brief-footer">
+        <span className="wt-brief-meta">
+          {generatedText} · {model || "—"}
+        </span>
+        <button type="button" className="btn-secondary" onClick={onRefresh} disabled={loading} tabIndex={open ? 0 : -1}>
+          <RefreshCw size={14} strokeWidth={1.75} aria-hidden="true" />
+          {loading ? "Hazırlanıyor…" : "Yenile"}
+        </button>
+      </footer>
     </aside>
   );
 }
