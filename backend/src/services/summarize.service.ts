@@ -17,7 +17,9 @@ KURALLAR — İSTİSNASIZ UYGULANACAK:
 5. Haber İran-İsrail çatışmasıyla alakasızsa:
    sadece "Bölgesel çatışmayla doğrudan ilgisi yok." yaz.
 6. Özeti asla "Bu haber..." veya "Makale..." diye başlatma.
-    Doğrudan olayla başla. Örnek: "İsrail hava kuvvetleri..."`;
+    Doğrudan olayla başla. Örnek: "İsrail hava kuvvetleri..."
+7. Yalnızca haberde yazanı aktar. Yorum, çıkarım veya değerlendirme
+   ("bu durum ... gösteriyor", "... yansıtıyor", "... anlamına geliyor") yasak.`;
 
 const STRICT_RETRY_PROMPT = `${SYSTEM_PROMPT}
 EK KURAL: Çıktı sadece Türkçe (Latin script) olmalı. Devanagari, Hangul, Kiril, Arapça, Çince ve diğer script karakterleri kesinlikle yasak.`;
@@ -25,8 +27,9 @@ EK KURAL: Çıktı sadece Türkçe (Latin script) olmalı. Devanagari, Hangul, K
 /* ───────────────── ENV ───────────────── */
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3.2:3b";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gemma3:4b";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const AI_LANG_GUARD = (process.env.AI_LANG_GUARD ?? "1") !== "0";
 const AI_SAFE_MODE = (process.env.AI_SAFE_MODE ?? "1") !== "0";
 
@@ -70,7 +73,7 @@ interface QueueItem {
 
 export interface SummarizeResult {
   summary: string;
-  model: "ollama" | "gemini" | "rule" | "none";
+  model: "ollama" | "gemini" | "none";
 }
 
 const MAX_QUEUE = 30;
@@ -222,7 +225,7 @@ function getGeminiModel() {
   }
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   return genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: GEMINI_MODEL,
     systemInstruction: SYSTEM_PROMPT,
   });
 }
@@ -297,36 +300,6 @@ function shouldLogValidationFailure(provider: "ollama" | "gemini", reasons: stri
   return true;
 }
 
-function buildRuleBasedSummary(text: string): string {
-  const clean = text
-    .replace(/\s+/g, " ")
-    .replace(/[“”"']/g, "")
-    .trim();
-  const lower = clean.toLocaleLowerCase("tr-TR");
-
-  const flags = {
-    strike: /(strike|attack|airstrike|missile|drone|bomb|raid|çatış|saldırı|taarruz|füze)/i.test(lower),
-    diplomacy: /(talks|meeting|minister|diplom|agreement|ateşkes|görüşme|anlaşma)/i.test(lower),
-    logistics: /(port|strait|hormuz|ship|navy|marine|fuel|energy|sevkiyat|lojistik)/i.test(lower),
-    civilian: /(civilian|hospital|medic|casualt|yaralı|sivil|tıbbi|acil)/i.test(lower)
-  };
-
-  if (flags.strike && flags.civilian) {
-    return "Kaynak habere göre bölgede askeri saldırı kaynaklı güvenlik baskısı sürüyor ve sivil etki riski öne çıkıyor.";
-  }
-  if (flags.strike) {
-    return "Kaynak habere göre bölgede askeri hareketlilik ve saldırı odaklı güvenlik riski artış eğiliminde.";
-  }
-  if (flags.diplomacy) {
-    return "Kaynak habere göre diplomatik temaslar sürerken sahadaki gerilim tamamen düşmüş görünmüyor.";
-  }
-  if (flags.logistics) {
-    return "Kaynak habere göre enerji ve lojistik hatları üzerindeki baskı bölgesel risk seviyesini etkiliyor.";
-  }
-
-  return "Kaynak habere göre bölgesel güvenlik ortamı dalgalı seyrediyor ve durum yakından izlenmeye devam ediyor.";
-}
-
 function validateSummary(summary: string, provider: "ollama" | "gemini", strictAttempt: boolean): boolean {
   if (!AI_LANG_GUARD) return true;
   const result = validateTurkishOutput(summary);
@@ -336,7 +309,7 @@ function validateSummary(summary: string, provider: "ollama" | "gemini", strictA
   if (shouldLogValidationFailure(provider, result.reasons)) {
     console.warn("[AI] Dil doğrulama başarısız", {
       provider,
-      model: provider === "ollama" ? OLLAMA_MODEL : "gemini-2.0-flash",
+      model: provider === "ollama" ? OLLAMA_MODEL : GEMINI_MODEL,
       promptVersion: strictAttempt ? "strict-v2" : "default-v2",
       detectedLanguage: result.detectedLanguage,
       scriptFlags: result.hasDisallowedScript,
@@ -383,9 +356,13 @@ async function doSummarize(text: string): Promise<SummarizeResult> {
     }
   }
 
-  // Providers failed -> deterministic Turkish fallback
+  // No provider produced a valid summary. Nothing is written, so the article
+  // stays unsummarized and the next cycle retries it. The former fallback
+  // stored one of five canned sentences ("bölgesel güvenlik ortamı dalgalı
+  // seyrediyor…") chosen by keyword, which the feed then displayed as the AI
+  // summary of unrelated stories, a science piece included.
   aiMetrics.ai_lang_fallback_total += 1;
-  return { summary: buildRuleBasedSummary(text), model: "rule" };
+  return { summary: "", model: "none" };
 }
 
 /* ───────────────── PUBLIC API ───────────────── */
@@ -499,6 +476,7 @@ export function getQueueStatus() {
     rateTokensRemaining: rateTokens,
     ollamaUrl: OLLAMA_URL,
     ollamaModel: OLLAMA_MODEL,
+    geminiModel: GEMINI_MODEL,
     geminiConfigured: !!(GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_KEY_HERE"),
     geminiBlockedUntil,
     safeMode: AI_SAFE_MODE,

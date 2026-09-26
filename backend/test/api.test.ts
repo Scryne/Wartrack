@@ -726,3 +726,106 @@ describe("backup routes (/api/backup)", () => {
     expect(typeof res.body.backups.total).toBe("number");
   });
 });
+
+describe("auto-extraction only turns theatre stories into events", () => {
+  it("ignores keyword hits in articles the gazetteer could not place in the region", async () => {
+    const { default: db } = await import("../src/db");
+    const { autoExtractEvents } = await import("../src/routes/events");
+    const info = db
+      .prepare(
+        `INSERT INTO articles (guid, title, link, pubDate, source, category)
+         VALUES ('offtheatre-1', 'Museum head hits back at Trump attack', 'https://e.test/o1', ?, 'Guardian World', 'haber')`
+      )
+      .run(new Date().toISOString());
+
+    autoExtractEvents();
+
+    const event = db.prepare("SELECT id FROM events WHERE articleId = ?").get(info.lastInsertRowid);
+    expect(event).toBeUndefined();
+  });
+
+  it("does not read a police interception as a missile event", async () => {
+    const { default: db } = await import("../src/db");
+    const { autoExtractEvents } = await import("../src/routes/events");
+    const now = new Date().toISOString();
+    const rows = db
+      .prepare(
+        `INSERT INTO articles (guid, title, link, pubDate, source, category, lat, lng)
+         VALUES (?, ?, ?, ?, 'Jerusalem Post', 'bölge', 31.25, 34.79)`
+      );
+    const camel = rows.run("sev-camel", "Illegal Negev camel race intercepted by police", "https://e.test/c1", now);
+    const drone = rows.run("sev-drone", "Drone intercepted over Eilat", "https://e.test/c2", now);
+
+    autoExtractEvents();
+
+    const severityOf = (id: number | bigint) =>
+      (db.prepare("SELECT severity FROM events WHERE articleId = ?").get(id) as { severity: string } | undefined)?.severity;
+    expect(severityOf(camel.lastInsertRowid)).toBeUndefined();
+    expect(severityOf(drone.lastInsertRowid)).toBe("4");
+  });
+});
+
+describe("auto-extracted events are dated by publication, not by ingestion", () => {
+  it("keeps a backlog story out of the last hour's critical count", async () => {
+    const { default: db } = await import("../src/db");
+    const { autoExtractEvents } = await import("../src/routes/events");
+    // Read today, published three days ago: what a catch-up RSS cycle ingests
+    // after the dashboard has been switched off.
+    const pubDate = new Date(Date.now() - 3 * 24 * 3600_000).toISOString();
+    const lastHour = async () =>
+      (await request(app).get("/api/events/threat-analysis")).body.metrics.criticalEventsLast1h as number;
+    const before = await lastHour();
+    const info = db
+      .prepare(
+        `INSERT INTO articles (guid, title, description, link, pubDate, source, category, lat, lng)
+         VALUES ('backlog-1', 'Ballistic missile launched toward Haifa', 'Backlog item', 'https://e.test/b1', ?, 'BBC World', 'haber', 32.79, 34.99)`
+      )
+      .run(pubDate);
+
+    autoExtractEvents();
+
+    const event = db
+      .prepare("SELECT createdAt, severity FROM events WHERE articleId = ?")
+      .get(info.lastInsertRowid) as { createdAt: string; severity: string } | undefined;
+    expect(event?.severity).toBe("4");
+    expect(event?.createdAt).toBe(pubDate);
+
+    expect(await lastHour()).toBe(before);
+  });
+
+  it("clamps a future-dated feed item to now and falls back to now when undated", async () => {
+    const { eventTimeFromPubDate } = await import("../src/routes/events");
+    const now = new Date("2026-09-26T08:00:00.000Z");
+
+    expect(eventTimeFromPubDate("2026-09-26T07:00:00.000Z", now)).toBe("2026-09-26T07:00:00.000Z");
+    expect(eventTimeFromPubDate("2026-09-27T09:00:00.000Z", now)).toBe(now.toISOString());
+    expect(eventTimeFromPubDate(null, now)).toBe(now.toISOString());
+    expect(eventTimeFromPubDate("not a date", now)).toBe(now.toISOString());
+  });
+});
+
+describe("feed scope keeps the monitored theatre in front", () => {
+  it("returns only geolocated articles for scope=theatre", async () => {
+    const { default: db } = await import("../src/db");
+    db.prepare(
+      `INSERT OR IGNORE INTO articles (guid, title, link, pubDate, source, category, lat, lng)
+       VALUES ('scope-in','Strike reported near Isfahan','https://e.test/s1','2026-09-26T06:00:00.000Z','BBC World','haber',32.65,51.67),
+              ('scope-out','Labour conference opens in Liverpool','https://e.test/s2','2026-09-26T06:00:00.000Z','Guardian World','haber',NULL,NULL)`
+    ).run();
+
+    const theatre = await request(app).get("/api/feed?scope=theatre&limit=200");
+    const all = await request(app).get("/api/feed?limit=200");
+
+    expect(theatre.status).toBe(200);
+    const theatreTitles = theatre.body.data.map((a: { title: string }) => a.title);
+    expect(theatre.body.data.every((a: { lat: number | null }) => a.lat !== null)).toBe(true);
+    expect(theatreTitles).toContain("Strike reported near Isfahan");
+    expect(theatreTitles).not.toContain("Labour conference opens in Liverpool");
+    expect(all.body.data.map((a: { title: string }) => a.title)).toContain("Labour conference opens in Liverpool");
+  });
+
+  it("rejects an unknown scope instead of silently ignoring it", async () => {
+    const res = await request(app).get("/api/feed?scope=world");
+    expect(res.status).toBe(400);
+  });
+});

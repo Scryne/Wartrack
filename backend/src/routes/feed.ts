@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import db from '../db';
-import { getArticles, getSourceStats, fetchAllFeeds, getFeedMetrics } from '../services/rss.service';
+import { getArticles, getSourceStats, fetchAllFeeds, getFeedMetrics, type ArticleScope } from '../services/rss.service';
 import { computeReliability } from '../services/reliability.service';
 import { validateTurkishOutput } from '../lib/languageGuard';
 import { rateLimit } from '../lib/rateLimit';
@@ -10,6 +10,12 @@ import { jobMetrics } from '../lib/jobMetrics';
 
 const router = Router();
 
+function parseScope(value: string | undefined): ArticleScope {
+  if (value === undefined || value === 'all') return 'all';
+  if (value === 'theatre') return 'theatre';
+  throw new QueryParamError("scope must be 'all' or 'theatre'");
+}
+
 router.get('/', (req, res) => {
   try {
     const opts = {
@@ -17,7 +23,8 @@ router.get('/', (req, res) => {
       offset: optionalInt(req.query.offset, 'offset', { fallback: 0, min: 0, max: 1_000_000 }),
       category: optionalString(req.query.category, 'category'),
       search: optionalString(req.query.search, 'search'),
-      source: optionalString(req.query.source, 'source')
+      source: optionalString(req.query.source, 'source'),
+      scope: parseScope(optionalString(req.query.scope, 'scope'))
     };
 
     const result = getArticles(opts);

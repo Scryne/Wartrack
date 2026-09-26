@@ -4,7 +4,7 @@ import path from "path";
 import os from "os";
 import { performance } from "perf_hooks";
 import Database from "better-sqlite3";
-import { runMigrations } from "../src/db/migrate";
+import { MIGRATION_VERSIONS, runMigrations } from "../src/db/migrate";
 import {
   createBackup,
   restoreBackup,
@@ -343,14 +343,14 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
 
     const meta = JSON.parse(fs.readFileSync(result.metadataPath, "utf8"));
     expect(meta.sha256Checksum).toBe(result.sha256Checksum);
-    expect(meta.databaseSchemaVersion).toBe(6);
+    expect(meta.databaseSchemaVersion).toBe(Math.max(...MIGRATION_VERSIONS));
     expect(meta.applicationVersion).toBe("0.1.0");
     expect(meta.corroborationAlgorithmVersion).toBe("v2.1-tactical");
     expect(meta.tablesSummary.articles).toBe(1);
 
     const listed = listBackups(testBackupDir);
     expect(listed[0].sha256Checksum).toBe(result.sha256Checksum);
-    expect(listed[0].schemaVersion).toBe(6);
+    expect(listed[0].schemaVersion).toBe(Math.max(...MIGRATION_VERSIONS));
 
     // Tamper detection: modify backup file and verify restore detects checksum mismatch
     testDb.close();

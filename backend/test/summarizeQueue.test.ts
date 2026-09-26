@@ -5,8 +5,8 @@ import fs from "fs/promises";
  * forever. Every later enqueue then returned at the guard, the queue never
  * drained, and callers' promises never settled — HTTP requests hung open.
  *
- * No Ollama or Gemini is reachable in the test environment, so doSummarize
- * deterministically falls through to the rule-based summariser.
+ * vitest.config.ts points OLLAMA_URL at a closed port and blanks the Gemini
+ * key, so no provider answers and every item settles as model "none".
  */
 
 const TEST_DB_RELATIVE_PATH = `./wartracker.queue.${process.pid}.db`;
@@ -40,8 +40,7 @@ describe("summarize queue", () => {
 
     expect(results).toHaveLength(3);
     for (const result of results) {
-      expect(typeof result.summary).toBe("string");
-      expect(result.summary.length).toBeGreaterThan(0);
+      expect(result.model).toBe("none");
     }
 
     const status = getQueueStatus();
@@ -56,7 +55,7 @@ describe("summarize queue", () => {
 
     const result = await summarizeArticle(4, "Drone intercepted over the Red Sea");
 
-    expect(result.summary.length).toBeGreaterThan(0);
+    expect(result.model).toBe("none");
     expect(getQueueStatus().processing).toBe(false);
   });
 
@@ -78,13 +77,14 @@ describe("summarize queue", () => {
     expect(getQueueStatus().queueLength).toBe(0);
   });
 
-  it("falls back to a deterministic Turkish summary when no provider answers", async () => {
+  it("writes no summary when no provider answers, so the article is retried later", async () => {
     const { summarizeArticle } = await import("../src/services/summarize.service");
 
     const result = await summarizeArticle(5, "Airstrike wounded civilians at a hospital");
 
-    expect(result.model).toBe("rule");
-    // strike + civilian branch of buildRuleBasedSummary
-    expect(result.summary).toContain("sivil etki riski");
+    // A canned sentence stored here used to be shown as this article's AI
+    // summary. An empty result leaves aiSummary NULL for the next cycle.
+    expect(result.model).toBe("none");
+    expect(result.summary).toBe("");
   });
 });

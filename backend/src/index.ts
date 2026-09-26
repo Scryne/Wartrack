@@ -7,6 +7,7 @@ import { registerJobs } from "./jobs";
 import db from "./db";
 import { sqliteIsoNow } from "./lib/time";
 import { assertSharedSecretConfigured, isApiKeyValid } from "./lib/auth";
+import { computeExplainableThreat } from "./services/threat.service";
 
 // After an uncaught exception the process state is undefined by Node's own
 // contract: handles may be leaked and a transaction may be half-applied.
@@ -87,21 +88,15 @@ const countRecentEventsStmt = db.prepare(
   `SELECT COUNT(*) as cnt FROM events WHERE createdAt > ${sqliteIsoNow("-1 day")}`
 );
 const countPinsStmt = db.prepare("SELECT COUNT(*) as cnt FROM pins");
-const countHighSeverityStmt = db.prepare(
-  `SELECT COUNT(*) as cnt FROM events
-    WHERE CAST(severity AS INTEGER) >= 4 AND createdAt > ${sqliteIsoNow("-1 hour")}`
-);
 
 function getInitPayload() {
   const articles_count = (countArticlesStmt.get() as { cnt: number }).cnt;
   const events_count = (countRecentEventsStmt.get() as { cnt: number }).cnt;
   const pins_count = (countPinsStmt.get() as { cnt: number }).cnt;
-  const highSevCount = (countHighSeverityStmt.get() as { cnt: number }).cnt;
-  let threat_level: 1 | 2 | 3 | 4 | 5 = 1;
-  if (highSevCount > 10) threat_level = 5;
-  else if (highSevCount > 5) threat_level = 4;
-  else if (highSevCount > 2) threat_level = 3;
-  else if (highSevCount > 0) threat_level = 2;
+  // One scoring model for every surface. This used its own 1-hour count with
+  // different thresholds, so a freshly connected client could show a level
+  // the threat panel's explanation contradicted.
+  const threat_level = computeExplainableThreat().threatLevel;
 
   return { articles_count, events_count, pins_count, threat_level };
 }

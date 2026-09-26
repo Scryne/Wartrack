@@ -9,7 +9,9 @@ const router = Router();
 
 const KEYWORD_SEVERITY: [RegExp, number][] = [
   [/nuclear|nükleer|reactor|uranium enrichment|atom/i, 5],
-  [/ballistic|missile|füze|rocket|drone strike|airstrike|air strike|intercept/i, 4],
+  // "intercept" only counts next to a projectile: on its own it also matched
+  // police stories ("Illegal Negev camel race intercepted") as severity 4.
+  [/ballistic|missile|füze|rocket|drone strike|airstrike|air strike|intercept\w*\b[^.]{0,60}\b(?:drone|projectile|uav)|(?:drone|projectile|uav)s?\b[^.]{0,60}\bintercept/i, 4],
   [/attack|saldırı|raid|clash|çatışma|explosion|patlama/i, 3],
   [/movement|deployment|mobilization|intikal|hareket/i, 2],
 ];
@@ -31,6 +33,25 @@ const insertEventStmt = db.prepare(`
   INSERT OR IGNORE INTO events (articleId, type, title, description, severity, source, lat, lng)
   VALUES (@articleId, @type, @title, @description, @severity, @source, @lat, @lng)
 `);
+
+// Auto-extracted events are dated by when the source says it happened, not by
+// when this process read the feed. Ingestion time made every backlog look like
+// a live attack: after the dashboard had been off for a month, one catch-up RSS
+// cycle dated 33 old stories "last hour" and the threat meter read 5 / KRİTİK.
+const insertAutoEventStmt = db.prepare(`
+  INSERT OR IGNORE INTO events (articleId, type, title, description, severity, source, lat, lng, createdAt)
+  VALUES (@articleId, @type, @title, @description, @severity, @source, @lat, @lng, @createdAt)
+`);
+
+/** An article's publication time, never later than now (feeds misdate items). */
+export function eventTimeFromPubDate(pubDate: string | null, now: Date = new Date()): string {
+  const nowIso = now.toISOString();
+  if (!pubDate) return nowIso;
+  const parsed = new Date(pubDate);
+  if (Number.isNaN(parsed.getTime())) return nowIso;
+  const iso = parsed.toISOString();
+  return iso < nowIso ? iso : nowIso;
+}
 
 const deleteEventStmt = db.prepare(`DELETE FROM events WHERE id = @id`);
 
@@ -241,13 +262,25 @@ router.delete("/:id", (req: Request, res: Response) => {
 export function autoExtractEvents(io?: { emit: (ev: string, data?: unknown) => void }): number {
   // Scan recent articles that are not linked to an event yet
   const recentArticles = db.prepare(`
-    SELECT id, title, description, source, lat, lng
+    SELECT id, title, description, source, lat, lng, pubDate
     FROM articles
     WHERE createdAt > ${sqliteIsoNow("-2 days")}
+      -- Only stories placed in the theatre become events. Keyword severity on
+      -- world feeds turned "hits back at Trump attack" (a museum dispute in
+      -- Washington) into a regional conflict event.
+      AND lat IS NOT NULL AND lng IS NOT NULL
       AND NOT EXISTS (
         SELECT 1 FROM events e WHERE e.articleId = articles.id
       )
-  `).all() as { id: number; title: string; description: string | null; source: string; lat: number | null; lng: number | null }[];
+  `).all() as {
+    id: number;
+    title: string;
+    description: string | null;
+    source: string;
+    lat: number | null;
+    lng: number | null;
+    pubDate: string | null;
+  }[];
 
   const insertedEvents: unknown[] = [];
 
@@ -265,7 +298,7 @@ export function autoExtractEvents(io?: { emit: (ev: string, data?: unknown) => v
       // severity is >= 3 here, so only these two arms are reachable.
       const type = severity >= 4 ? "kritik" : "çatışma";
 
-      const result = insertEventStmt.run({
+      const result = insertAutoEventStmt.run({
         articleId: article.id,
         type,
         title: article.title,
@@ -274,6 +307,7 @@ export function autoExtractEvents(io?: { emit: (ev: string, data?: unknown) => v
         source: article.source ?? null,
         lat: article.lat ?? null,
         lng: article.lng ?? null,
+        createdAt: eventTimeFromPubDate(article.pubDate),
       });
 
       // changes === 0 means OR IGNORE skipped an already-linked article.
