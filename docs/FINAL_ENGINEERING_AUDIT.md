@@ -1,5 +1,12 @@
 # WARTRACKER — COMPREHENSIVE PRODUCTION HARDENING & ENGINEERING AUDIT REPORT
 
+> **Note (2026-09-26):** This is an internal, AI-assisted self-audit, not an independent
+> third-party certification, and its verdict should be read as such. The September 2026 audit
+> found and fixed defects it did not catch: the test suite erased the live database, RSS
+> ingestion fetched nothing on a slow resolver, CI had been failing since 2026-08-22, the map
+> basemap and four of eight live streams were dead, and a keyword fallback stored canned
+> sentences as AI summaries. Current, measured state: [`../DURUM.md`](../DURUM.md).
+
 **Author**: Principal Software Architect & Lead Security Engineer  
 **Audit Date**: August 2026  
 **Target Platform**: WARTRACKER Tactical OSINT & Situation Room Intelligence Engine  

@@ -326,7 +326,7 @@ tema:             dark (varsayılan: Precision Dark HUD)
 yogunluk:         yoğun (yüksek bilgi yoğunluğu, sıfır gereksiz boşluk)
 dil:              tr (Arayüz ve AI çıktıları Türkçe, kaynak akışları küresel/İngilizce)
 stack:            React 18 + Vite 5 + TypeScript + Tailwind v3.4 + Zustand 4 + Leaflet
-grafik_kutuphanesi: CSS/SVG Bar Göstergeleri + Leaflet Carto Dark Basemap
+grafik_kutuphanesi: CSS/SVG Bar Göstergeleri + Leaflet Esri World Dark Gray Basemap (2026-09: CARTO anahtar istemeye başladı)
 ikon_seti:        lucide-react (tek set, emoji kesinlikle yasak)
 kirmizi_cizgiler: "WebSocket canlı akışı ve state güncellemeleri bozulamaz; tek operatör auth mantığı değişemez; harita render performansı düşürülemez."
 ```
