@@ -1,44 +1,32 @@
 import { useEffect, useState } from 'react';
+import { Settings, Volume2, VolumeX } from 'lucide-react';
 import { useConnectionStore } from '../stores/useConnectionStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useFeedStore } from '../stores/useFeedStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useWatchlistStore } from '../stores/useWatchlistStore';
+import { THREAT_SCALE } from '../lib/threat';
 
-const COLORS: Record<1 | 2 | 3 | 4 | 5, string> = {
-  1: '#00D084',
-  2: '#7CB342',
-  3: '#F5A623',
-  4: '#FF6B00',
-  5: '#FF3B3B'
-};
-
-const LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
-  1: 'DÜŞÜK',
-  2: 'ILIMAN',
-  3: 'ORTA',
-  4: 'YÜKSEK',
-  5: 'KRİTİK'
-};
+const clockFormat = new Intl.DateTimeFormat('tr-TR', {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  timeZone: 'Europe/Istanbul'
+});
 
 const StatusBar = () => {
   const connected = useConnectionStore((s) => s.connected);
   const level = useEventStore((s) => s.threatLevel);
   const { keywords, matches } = useWatchlistStore();
-  const watchCount = useFeedStore((s) =>
-    s.articles.filter((a) => matches(a.title).length > 0).length
-  );
+  const watchCount = useFeedStore((s) => s.articles.filter((a) => matches(a.title).length > 0).length);
   const threatSound = useSettingsStore((s) => s.threatSound);
-  const [time, setTime] = useState('');
+  const [time, setTime] = useState(() => clockFormat.format(new Date()));
   const [isCompact, setIsCompact] = useState(() => window.innerWidth < 1100);
+  const scale = THREAT_SCALE[level];
 
   useEffect(() => {
-    const update = () => {
-      const d = new Date();
-      setTime(d.toLocaleTimeString('tr-TR', { hour12: false }));
-    };
-    update();
-    const t = setInterval(update, 1000);
+    const t = setInterval(() => setTime(clockFormat.format(new Date())), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -49,257 +37,63 @@ const StatusBar = () => {
   }, []);
 
   return (
-    <header
-      style={{
-        height: 'var(--status-h)',
-        background: 'var(--bg-void)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 16px',
-        justifyContent: 'space-between',
-        flexShrink: 0,
-        position: 'relative',
-        zIndex: 100
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 22,
-            letterSpacing: 4,
-            color: 'var(--text-primary)',
-            lineHeight: 1
-          }}
-        >
-          WARTRACKER
-        </span>
-        <span
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 9,
-            color: 'var(--accent)',
-            border: '1px solid rgba(0,170,255,0.3)',
-            padding: '2px 6px',
-            borderRadius: '2px',
-            letterSpacing: 1
-          }}
-        >
-          v3.0
-        </span>
-        <div style={{ width: 1, height: 16, background: 'var(--border-strong)' }} />
-        {!isCompact ? (
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              color: 'var(--text-muted)',
-              letterSpacing: 1
-            }}
-          >
-            IRAN - ISRAIL
-          </span>
-        ) : null}
+    <header className="wt-statusbar">
+      <div className="wt-statusbar-group">
+        <h1 className="wt-wordmark">WARTRACKER</h1>
+        {!isCompact ? <span className="wt-statusbar-meta">İRAN–İSRAİL · LEVANT</span> : null}
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 20,
-          position: isCompact ? 'static' : 'absolute',
-          left: isCompact ? undefined : '50%',
-          transform: isCompact ? undefined : 'translateX(-50%)'
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            paddingRight: 2,
-            borderRight: '1px solid var(--border-strong)'
-          }}
-        >
-          <span
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 22,
-              lineHeight: 1,
-              color: COLORS[level],
-              textShadow: `0 0 16px ${COLORS[level]}66`
-            }}
-          >
+      <div className="wt-statusbar-group" aria-live="polite">
+        <div className="wt-threat-chip" title={`Tehdit seviyesi ${level}/5: ${scale.label}`}>
+          <span className="wt-threat-chip-value" style={{ color: scale.color }}>
             {level}
           </span>
-          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.05 }}>
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 8,
-                letterSpacing: 1.2,
-                color: 'var(--text-muted)'
-              }}
-            >
-              TEHDİT
-            </span>
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                letterSpacing: 0.8,
-                color: COLORS[level]
-              }}
-            >
-              {LABELS[level]}
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2 }}>
-            {[8, 11, 14, 17, 20].map((h, i) => (
-              <div
-                key={h}
-                style={{
-                  width: 3,
-                  height: h,
-                  borderRadius: 1,
-                  background: i < level ? COLORS[level] : 'var(--border-strong)',
-                  opacity: i < level ? 1 : 0.7
-                }}
-              />
+          <span className="wt-threat-chip-label">
+            <span className="wt-statusbar-meta">TEHDİT</span>
+            <span style={{ color: scale.color }}>{scale.label}</span>
+          </span>
+          <span className="wt-threat-bars" aria-hidden="true">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <span key={i} style={{ height: 6 + i * 3, background: i <= level ? scale.color : 'var(--color-border-strong)' }} />
             ))}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: connected ? 'var(--green)' : 'var(--red)',
-              animation: connected ? 'pulse-dot 2s infinite' : 'none'
-            }}
-          />
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              color: connected ? 'var(--green)' : 'var(--red)',
-              letterSpacing: 1
-            }}
-          >
-            {connected ? 'CANLI' : 'BAGLANTI YOK'}
           </span>
         </div>
 
-        {!isCompact ? <div style={{ width: 1, height: 14, background: 'var(--border-strong)' }} /> : null}
+        <span className="wt-live" data-connected={connected}>
+          <span className="wt-live-dot" aria-hidden="true" />
+          {connected ? 'CANLI' : 'BAĞLANTI YOK'}
+        </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div className="wt-statusbar-group">
         {keywords.length > 0 && watchCount > 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '0 10px',
-              borderLeft: '1px solid var(--border)',
-              borderRight: '1px solid var(--border)'
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                background: '#F5A623'
-              }}
-            />
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                color: '#F5A623',
-                letterSpacing: 0.5
-              }}
-            >
-              {watchCount} izleme
-            </span>
-          </div>
+          <span className="wt-watch-count">{watchCount} izlenen haber</span>
         ) : null}
 
-        {/* Global Sound Mute Toggle */}
         <button
-          className="btn-ghost"
-          onClick={() => {
-            useSettingsStore.getState().update({ threatSound: !threatSound });
-          }}
-          title={threatSound ? 'Taktik sesleri kapat' : 'Taktik sesleri aç'}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 11,
-            padding: '3px 8px',
-            fontFamily: 'var(--font-mono)',
-            color: threatSound ? 'var(--accent)' : 'var(--text-muted)'
-          }}
+          type="button"
+          className="btn-ghost wt-icon-button"
+          aria-pressed={threatSound}
+          aria-label={isCompact ? 'Uyarı sesi' : undefined}
+          title={threatSound ? 'Uyarı sesleri açık: kapatmak için basın' : 'Uyarı sesleri kapalı: açmak için basın'}
+          onClick={() => useSettingsStore.getState().update({ threatSound: !threatSound })}
         >
-          <span>{threatSound ? '🔊' : '🔇'}</span>
-          {!isCompact ? <span style={{ fontSize: 9 }}>{threatSound ? 'SES AÇIK' : 'SESSİZ'}</span> : null}
+          {threatSound ? <Volume2 size={16} strokeWidth={1.75} aria-hidden="true" /> : <VolumeX size={16} strokeWidth={1.75} aria-hidden="true" />}
+          {!isCompact ? <span className="wt-statusbar-meta">UYARI SESİ</span> : null}
         </button>
 
-        {/* Theme Selector */}
-        <select
-          defaultValue={localStorage.getItem('wartracker-theme') ?? 'dark'}
-          onChange={(e) => {
-            const val = e.target.value;
-            localStorage.setItem('wartracker-theme', val);
-            if (val === 'dark') {
-              document.documentElement.removeAttribute('data-theme');
-            } else {
-              document.documentElement.setAttribute('data-theme', val);
-            }
-          }}
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 9,
-            background: 'var(--bg-elevated)',
-            color: 'var(--text-secondary)',
-            border: '1px solid var(--border-strong)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '2px 6px',
-            cursor: 'pointer',
-            outline: 'none'
-          }}
-          title="Taktik Arayüz Teması"
-        >
-          <option value="dark">DARK HUD</option>
-          <option value="nvg">NVG YEŞİL</option>
-          <option value="amber">FLIR AMBER</option>
-        </select>
-
-        <span
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 13,
-            color: 'var(--text-secondary)',
-            letterSpacing: 1.5,
-            minWidth: 62,
-            textAlign: 'center'
-          }}
-        >
+        <time className="wt-clock" title="İstanbul saati">
           {time}
-        </span>
+        </time>
 
         <button
-          className="btn-ghost"
-          onClick={() => useSettingsStore.getState().setOpen(true)}
+          type="button"
+          className="btn-ghost wt-icon-button"
+          aria-label="Ayarları aç"
           title="Ayarlar"
-          style={{ fontSize: 15, padding: '4px 8px' }}
+          onClick={() => useSettingsStore.getState().setOpen(true)}
         >
-          ⚙
+          <Settings size={16} strokeWidth={1.75} />
         </button>
       </div>
     </header>

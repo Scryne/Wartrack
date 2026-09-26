@@ -1,39 +1,33 @@
-export function showConfirmToast(message: string): Promise<boolean> {
+/**
+ * Inline confirmation for destructive actions. Styled by .wt-confirm in
+ * index.css (tokens), not inline literals.
+ */
+export function showConfirmToast(message: string, confirmLabel = 'Sil'): Promise<boolean> {
   return new Promise((resolve) => {
     const backdrop = document.createElement('div');
-    backdrop.style.cssText = `
-      position:fixed; inset:0; z-index:9998; background:transparent;
-    `;
+    backdrop.className = 'wt-confirm-backdrop';
 
     const el = document.createElement('div');
-    el.style.cssText = `
-      position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
-      background:#091526; border:1px solid rgba(255,255,255,0.12);
-      border-radius:8px; padding:14px 20px; z-index:9999;
-      font-family:'Space Grotesk',sans-serif; font-size:13px;
-      color:#F0F4F8; display:flex; align-items:center; gap:12px;
-      box-shadow:0 8px 32px rgba(0,0,0,0.6);
-      animation:slide-down 0.2s ease-out;
-    `;
+    el.className = 'wt-confirm';
+    el.setAttribute('role', 'alertdialog');
+    el.setAttribute('aria-modal', 'true');
 
     // textContent, not innerHTML: the message is interpolated verbatim and
     // must never be able to inject markup.
     const label = document.createElement('span');
+    label.id = `wt-confirm-${Date.now()}`;
     label.textContent = message;
+    el.setAttribute('aria-labelledby', label.id);
 
     const confirmButton = document.createElement('button');
-    confirmButton.textContent = 'Evet, Sil';
-    confirmButton.style.cssText = `
-      padding:4px 14px;background:#FF3B3B;border:none;border-radius:4px;
-      color:#fff;cursor:pointer;font-size:12px;
-    `;
+    confirmButton.type = 'button';
+    confirmButton.className = 'btn-primary wt-btn-sm wt-confirm-danger';
+    confirmButton.textContent = confirmLabel;
 
     const cancelButton = document.createElement('button');
-    cancelButton.textContent = 'Iptal';
-    cancelButton.style.cssText = `
-      padding:4px 14px;background:transparent;border:1px solid rgba(255,255,255,0.2);
-      border-radius:4px;color:#94A3B8;cursor:pointer;font-size:12px;
-    `;
+    cancelButton.type = 'button';
+    cancelButton.className = 'btn-secondary wt-btn-sm';
+    cancelButton.textContent = 'Vazgeç';
 
     el.append(label, confirmButton, cancelButton);
 

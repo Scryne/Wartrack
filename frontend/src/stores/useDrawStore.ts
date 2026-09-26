@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { tokenColor } from '../lib/tokens';
 
 export type DrawTool = 'none' | 'pen' | 'line' | 'circle' | 'rectangle';
 
@@ -27,7 +28,8 @@ interface DrawState {
 export const useDrawStore = create<DrawState>((set) => ({
   active: false,
   tool: 'none',
-  color: '#FF3B3B',
+  // Resolved from the token: Leaflet needs a concrete colour for SVG strokes.
+  color: tokenColor('--color-chart-1'),
   shapes: [],
   toggle: () => set((s) => ({ active: !s.active, tool: s.active ? 'none' : 'pen' })),
   setTool: (tool) => set({ tool }),

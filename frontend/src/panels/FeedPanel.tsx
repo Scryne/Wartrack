@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
+import { RefreshCw, Search, Sparkles, Star } from 'lucide-react';
 import FeedCard from '../components/FeedCard';
 import { useBookmarkStore } from '../stores/useBookmarkStore';
 import { useFeedStore } from '../stores/useFeedStore';
 import { useWatchlistStore } from '../stores/useWatchlistStore';
 
 const TABS = [
-  { id: 'all', label: 'TUM' },
-  { id: 'haber', label: 'HABER' },
-  { id: 'bölge', label: 'BOLGE' },
-  { id: 'savunma', label: 'SAVUNMA' },
-  { id: 'analiz', label: 'ANALIZ' },
-  { id: 'bookmarks', label: '★ Kayitli' }
+  { id: 'all', label: 'Tümü' },
+  { id: 'haber', label: 'Haber' },
+  { id: 'bölge', label: 'Bölge' },
+  { id: 'savunma', label: 'Savunma' },
+  { id: 'analiz', label: 'Analiz' },
+  { id: 'bookmarks', label: 'Kaydedilenler' }
 ] as const;
 type TabKey = (typeof TABS)[number]['id'];
 
@@ -22,15 +23,18 @@ function FeedPanel({ onOpenBrief }: FeedPanelProps) {
   const {
     articles,
     loading,
+    error,
     activeTab,
     searchQuery,
     total,
     lastUpdated,
     refreshing,
     hasMore,
+    theatreOnly,
     fetchArticles,
     setTab,
     setSearch,
+    setTheatreOnly,
     refresh,
     loadMore
   } = useFeedStore();
@@ -58,153 +62,122 @@ function FeedPanel({ onOpenBrief }: FeedPanelProps) {
     return () => clearTimeout(t);
   }, [localQuery, searchQuery, setSearch]);
 
-  const updatedText = useMemo(() => {
-    if (!lastUpdated) return '--:--';
-    return lastUpdated.toLocaleTimeString('tr-TR', { hour12: false });
-  }, [lastUpdated]);
+  const updatedText = lastUpdated
+    ? lastUpdated.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : null;
+
+  const clearSearch = () => {
+    setLocalQuery('');
+    setSearch('');
+  };
+
+  let emptyState: { title: string; body: string; action?: { label: string; run: () => void } } | null = null;
+  if (!loading && !error && displayArticles.length === 0) {
+    if (isBookmarksTab) {
+      emptyState = {
+        title: 'Kaydedilmiş haber yok',
+        body: 'Bir haberin üzerine gelip yıldıza basarak buraya ekleyin.'
+      };
+    } else if (searchQuery) {
+      emptyState = {
+        title: `"${searchQuery}" ile eşleşen haber yok`,
+        body: theatreOnly ? 'Arama yalnız bölgeye ait haberlerde yapıldı.' : 'Başka bir sözcükle deneyin.',
+        action: { label: 'Aramayı temizle', run: clearSearch }
+      };
+    } else if (theatreOnly) {
+      emptyState = {
+        title: 'Bu sekmede bölgeye ait haber yok',
+        body: 'Kaynaklar taranıyor; bölge dışı haberler de dahil edilebilir.',
+        action: { label: 'Tüm haberleri göster', run: () => setTheatreOnly(false) }
+      };
+    } else {
+      emptyState = {
+        title: 'Henüz haber yok',
+        body: 'Kaynaklar her 5 dakikada taranır. İlk tarama birkaç dakika sürebilir.',
+        action: { label: 'Şimdi tara', run: () => void refresh() }
+      };
+    }
+  }
 
   return (
-    <section className="panel">
+    <section className="panel" aria-labelledby="wt-feed-title">
       <div className="panel-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="panel-title">◈ HABERLER</span>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              color: 'var(--text-secondary)',
-              letterSpacing: 0.4
-            }}
-          >
-            <span style={{ color: 'var(--accent)' }}>◈</span>
-            <span style={{ color: 'var(--text-primary)' }}>{articleCount} makale</span>
+        <div className="wt-panel-heading">
+          <h2 id="wt-feed-title" className="panel-title">
+            Haberler
+          </h2>
+          <span className="wt-count" aria-label={`${articleCount} haber`}>
+            {articleCount}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="wt-panel-heading">
+          <button type="button" className="btn-secondary wt-btn-sm" onClick={onOpenBrief}>
+            <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />
+            Durum özeti
+          </button>
           <button
             type="button"
-            onClick={onOpenBrief}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '4px 10px',
-              background: 'rgba(167,139,250,0.1)',
-              border: '1px solid rgba(167,139,250,0.3)',
-              borderRadius: 'var(--radius-sm)',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              color: '#A78BFA',
-              letterSpacing: 0.5
-            }}
+            className="btn-ghost wt-icon-button"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+            aria-label="Kaynakları şimdi tara"
+            title={updatedText ? `Son güncelleme ${updatedText} · şimdi tara` : 'Şimdi tara'}
           >
-            🤖 DURUM ÖZETİ
-          </button>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
-            {updatedText}
-          </span>
-          <button className="btn-ghost" onClick={() => void refresh()}>
-            {refreshing ? '...' : 'YENILE'}
+            <RefreshCw size={15} strokeWidth={1.75} className={refreshing ? 'wt-spin' : undefined} />
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          height: 36,
-          flexShrink: 0,
-          borderBottom: '1px solid var(--border)',
-          padding: '0 14px',
-          display: 'flex',
-          alignItems: 'flex-end',
-          gap: 0,
-          overflowX: 'auto',
-          overflowY: 'hidden'
-        }}
-      >
+      <div className="wt-tabs" role="tablist" aria-label="Haber kategorisi">
         {TABS.map((tab) => {
           const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               type="button"
+              role="tab"
+              aria-selected={active}
+              className="wt-tab"
               onClick={() => setTab(tab.id as TabKey)}
-              onMouseEnter={(e) => {
-                if (active) return;
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }}
-              onMouseLeave={(e) => {
-                if (active) return;
-                e.currentTarget.style.color = 'var(--text-muted)';
-              }}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                letterSpacing: 1,
-                padding: '0 12px',
-                whiteSpace: 'nowrap',
-                height: 35,
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                transition: 'color 0.12s',
-                color: active ? 'var(--text-primary)' : 'var(--text-muted)',
-                borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
-                marginBottom: active ? -1 : 0
-              }}
             >
+              {tab.id === 'bookmarks' ? <Star size={12} strokeWidth={1.75} aria-hidden="true" /> : null}
               {tab.label}
             </button>
           );
         })}
       </div>
 
-      <div style={{ height: 40, flexShrink: 0, padding: '6px 14px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ position: 'relative' }}>
-          <span
-            style={{
-              position: 'absolute',
-              left: 10,
-              top: 6,
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              fontFamily: 'var(--font-mono)'
-            }}
-          >
-            ⌕
-          </span>
+      <div className="wt-feed-tools">
+        <label className="wt-search">
+          <Search size={14} strokeWidth={1.75} aria-hidden="true" />
+          <span className="sr-only">Haberlerde ara</span>
           <input
+            type="search"
             value={localQuery}
             onChange={(e) => setLocalQuery(e.target.value)}
-            placeholder="⌕  Ara..."
-            style={{
-              width: '100%',
-              height: 28,
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '0 10px 0 28px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--text-primary)',
-              outline: 'none'
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = 'var(--accent)';
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border)';
-            }}
+            placeholder="Başlık veya kaynakta ara"
           />
-        </div>
+        </label>
+        {!isBookmarksTab ? (
+          <button
+            type="button"
+            className="wt-toggle"
+            aria-pressed={theatreOnly}
+            onClick={() => setTheatreOnly(!theatreOnly)}
+            title={
+              theatreOnly
+                ? 'Yalnız bölgedeki bir konuma bağlanan haberler gösteriliyor'
+                : 'Tüm kaynakların bütün haberleri gösteriliyor'
+            }
+          >
+            {theatreOnly ? 'Yalnız bölge' : 'Tüm haberler'}
+          </button>
+        ) : null}
       </div>
 
       <div
-        style={{ flex: 1, overflowY: 'auto' }}
+        className="wt-feed-list"
+        aria-busy={loading}
         onScroll={(e) => {
           if (isBookmarksTab) return;
           const el = e.currentTarget;
@@ -215,42 +188,33 @@ function FeedPanel({ onOpenBrief }: FeedPanelProps) {
         }}
       >
         {loading && !isBookmarksTab && displayArticles.length === 0
-          ? [1, 2, 3].map((key) => (
-              <div
-                key={key}
-                style={{
-                  height: 92,
-                  borderBottom: '1px solid var(--border)',
-                  background: 'var(--bg-elevated)',
-                  opacity: 0.7,
-                  animation: 'pulse-dot 1.2s infinite'
-                }}
-              />
-            ))
+          ? [1, 2, 3, 4].map((key) => <div key={key} className="wt-feed-skeleton wt-skeleton" />)
           : null}
 
-        {!loading && displayArticles.length === 0 ? (
-          <div
-            style={{
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--text-muted)'
-            }}
-          >
-            {isBookmarksTab ? '★ Henuz kaydedilen haber yok.' : 'HABER BULUNAMADI'}
+        {error && displayArticles.length === 0 ? (
+          <div className="wt-empty" role="alert">
+            <p className="wt-empty-title">Haberler yüklenemedi</p>
+            <p className="wt-empty-body">Sunucuya ulaşılamadı. Bağlantıyı kontrol edip tekrar deneyin.</p>
+            <button type="button" className="btn-secondary wt-btn-sm" onClick={() => void fetchArticles()}>
+              Tekrar dene
+            </button>
+            <p className="wt-empty-code">{error}</p>
+          </div>
+        ) : null}
+
+        {emptyState ? (
+          <div className="wt-empty">
+            <p className="wt-empty-title">{emptyState.title}</p>
+            <p className="wt-empty-body">{emptyState.body}</p>
+            {emptyState.action ? (
+              <button type="button" className="btn-secondary wt-btn-sm" onClick={emptyState.action.run}>
+                {emptyState.action.label}
+              </button>
+            ) : null}
           </div>
         ) : (
           displayArticles.map((article) => (
-            <FeedCard
-              key={article.guid}
-              article={article}
-              query={searchQuery}
-              forceBookmarkBorder={isBookmarksTab}
-            />
+            <FeedCard key={article.guid} article={article} query={searchQuery} forceBookmarkBorder={isBookmarksTab} />
           ))
         )}
       </div>

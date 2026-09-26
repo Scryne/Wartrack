@@ -20,16 +20,30 @@ interface FeedStoreState {
   hasMore: boolean;
   lastUpdated: Date | null;
   refreshing: boolean;
+  /** Only articles placed in the monitored region (see GetArticlesOpts.scope). */
+  theatreOnly: boolean;
 
   fetchArticles: () => Promise<void>;
   loadMore: () => Promise<void>;
   setTab: (tab: FeedTab) => void;
   setSearch: (query: string) => void;
   setSource: (source: string | null) => void;
+  setTheatreOnly: (value: boolean) => void;
   refresh: () => Promise<void>;
   prependArticle: (article: Article) => void;
   updateArticleSummary: (id: number, aiSummary: string) => void;
   filteredArticles: () => Article[];
+}
+
+function feedParams(state: Pick<FeedStoreState, "activeTab" | "searchQuery" | "selectedSource" | "theatreOnly">, offset: number) {
+  const params = new URLSearchParams();
+  params.set("limit", String(PAGE_SIZE));
+  params.set("offset", String(offset));
+  if (state.activeTab !== "all" && state.activeTab !== "bookmarks") params.set("category", state.activeTab);
+  if (state.searchQuery) params.set("search", state.searchQuery);
+  if (state.selectedSource) params.set("source", state.selectedSource);
+  if (state.theatreOnly) params.set("scope", "theatre");
+  return params;
 }
 
 export const useFeedStore = create<FeedStoreState>((set, get) => ({
@@ -44,19 +58,13 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
   hasMore: true,
   lastUpdated: null,
   refreshing: false,
+  theatreOnly: true,
 
   fetchArticles: async () => {
-    const { activeTab, searchQuery, selectedSource } = get();
     set({ loading: true, error: null, page: 0 });
 
     try {
-      const params = new URLSearchParams();
-      params.set("limit", String(PAGE_SIZE));
-      params.set("offset", "0");
-      if (activeTab !== "all" && activeTab !== "bookmarks") params.set("category", activeTab);
-      if (searchQuery) params.set("search", searchQuery);
-      if (selectedSource) params.set("source", selectedSource);
-
+      const params = feedParams(get(), 0);
       const res = await apiFetch(`/api/feed?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -78,7 +86,7 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
   },
 
   loadMore: async () => {
-    const { activeTab, searchQuery, selectedSource, page, articles, loading, hasMore } = get();
+    const { page, articles, loading, hasMore } = get();
     if (loading || !hasMore) return;
 
     const nextPage = page + 1;
@@ -86,13 +94,7 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
     set({ loading: true });
 
     try {
-      const params = new URLSearchParams();
-      params.set("limit", String(PAGE_SIZE));
-      params.set("offset", String(offset));
-      if (activeTab !== "all" && activeTab !== "bookmarks") params.set("category", activeTab);
-      if (searchQuery) params.set("search", searchQuery);
-      if (selectedSource) params.set("source", selectedSource);
-
+      const params = feedParams(get(), offset);
       const res = await apiFetch(`/api/feed?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -150,6 +152,11 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
     void get().fetchArticles();
   },
 
+  setTheatreOnly: (value) => {
+    set({ theatreOnly: value, articles: [], page: 0, hasMore: true });
+    void get().fetchArticles();
+  },
+
   refresh: async () => {
     set({ refreshing: true });
     try {
@@ -167,6 +174,10 @@ export const useFeedStore = create<FeedStoreState>((set, get) => ({
     set((state) => {
       // Avoid duplicate
       if (state.articles.some((a) => a.id === article.id || a.guid === article.guid)) {
+        return state;
+      }
+      // Live pushes bypass the query, so the region filter is applied here too.
+      if (state.theatreOnly && (article.lat == null || article.lng == null)) {
         return state;
       }
       return {

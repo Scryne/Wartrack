@@ -29,7 +29,7 @@ describe("StatusBar", () => {
     render(<StatusBar />);
 
     expect(screen.getByText("CANLI")).toBeInTheDocument();
-    expect(screen.getByText("YÜKSEK")).toBeInTheDocument();
-    expect(screen.getByText("1 izleme")).toBeInTheDocument();
+    expect(screen.getByText("YÜKSEK RİSK")).toBeInTheDocument();
+    expect(screen.getByText("1 izlenen haber")).toBeInTheDocument();
   });
 });

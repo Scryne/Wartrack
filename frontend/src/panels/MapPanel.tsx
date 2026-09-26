@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Flame, MapPin, PenLine, Radar, Radiation } from 'lucide-react';
 import L from 'leaflet';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import DrawToolbar from '../components/DrawToolbar';
@@ -9,15 +10,27 @@ import { NUCLEAR_SITES } from '../data/nuclearSites';
 import { SAM_SYSTEMS } from '../data/samSystems';
 import { showConfirmToast } from '../lib/toast';
 import { apiFetch } from '../lib/api';
+import { BASEMAP } from '../lib/basemap';
+import { formatRelativeTime } from '../lib/time';
 import { useBookmarkStore } from '../stores/useBookmarkStore';
 import { useMapStore } from '../stores/useMapStore';
 import { useDrawStore } from '../stores/useDrawStore';
 import { useLayerStore } from '../stores/useLayerStore';
 import { useWatchlistStore } from '../stores/useWatchlistStore';
 import type { Pin } from '../types';
+import type { NewsPin } from '../stores/useMapStore';
 import { DrawController } from './mapPanel/DrawController';
 import { CursorTracker, MapBootstrap, ViewportSync } from './mapPanel/helpers';
-import { WORKSPACES, createNewsPinIcon, escapeHtml, isCritical, manualIcon, toSafeUrl } from './mapPanel/mapUtils';
+import { PIN_COLOR, WORKSPACES, createNewsPinIcon, escapeHtml, isCritical, manualIcon, toSafeUrl, tokenColor } from './mapPanel/mapUtils';
+
+const PIN_CATEGORY_LABEL: Record<string, string> = {
+  strike: 'Taarruz',
+  movement: 'Hareket',
+  nuclear: 'Nükleer',
+  naval: 'Deniz',
+  air: 'Hava',
+  info: 'Bilgi'
+};
 
 interface MapPanelProps {
   showBrief: boolean;
@@ -117,40 +130,25 @@ function MapPanel({
     manualPinsLayer.current.clearLayers();
     pins.forEach((pin) => {
       if (legendFilters.length > 0 && !legendFilters.includes(pin.category)) return;
-      const marker = L.marker([pin.lat, pin.lng], { icon: manualIcon(pin.category) });
+      const marker = L.marker([pin.lat, pin.lng], { icon: manualIcon(pin.category), title: `İşaret: ${pin.title}` });
       const isHoveredMismatch = hoveredLegendKey ? hoveredLegendKey !== pin.category : false;
       marker.setOpacity(isHoveredMismatch ? 0.2 : 1);
 
       const popupEl = document.createElement('div');
-      popupEl.style.fontFamily = "'Space Grotesk', sans-serif";
-      popupEl.style.minWidth = '240px';
+      popupEl.className = 'wt-popup';
       const safeTitle = escapeHtml(pin.title);
       const safeDescription = pin.description ? escapeHtml(pin.description) : '';
+      const pinColor = PIN_COLOR[pin.category] ?? PIN_COLOR.info;
       popupEl.innerHTML = `
-        <div style='margin-bottom:10px'>
-          <div style='font-family:JetBrains Mono,monospace;font-size:9px;
-            color:#00AAFF;letter-spacing:1px;margin-bottom:6px'>
-            📍 ${escapeHtml(pin.category.toUpperCase())}
-          </div>
-          <p style='font-size:13px;font-weight:600;color:#F0F4F8;
-            margin:0 0 4px;line-height:1.4'>${safeTitle}</p>
-          ${pin.description ? `<p style='font-size:11px;color:#5E7A96;
-            margin:0;font-style:italic'>${safeDescription}</p>` : ''}
+        <div class='wt-popup-meta'>
+          <span class='wt-dot' style='background:${pinColor}'></span>
+          ${escapeHtml(PIN_CATEGORY_LABEL[pin.category] ?? pin.category)} · işaret
         </div>
-        <div style='display:flex;gap:6px;padding-top:8px;
-          border-top:1px solid rgba(255,255,255,0.07)'>
-          <button id='edit-pin-${pin.id}' style='
-            flex:1;padding:5px;font-size:11px;cursor:pointer;
-            background:rgba(0,170,255,0.1);border:1px solid rgba(0,170,255,0.3);
-            border-radius:4px;color:#00AAFF;font-family:JetBrains Mono,monospace'>
-            ✏ Duzenle
-          </button>
-          <button id='delete-pin-${pin.id}' style='
-            flex:1;padding:5px;font-size:11px;cursor:pointer;
-            background:rgba(255,59,59,0.1);border:1px solid rgba(255,59,59,0.3);
-            border-radius:4px;color:#FF3B3B;font-family:JetBrains Mono,monospace'>
-            ✕ Sil
-          </button>
+        <p class='wt-popup-title'>${safeTitle}</p>
+        ${pin.description ? `<p class='wt-popup-text'>${safeDescription}</p>` : ''}
+        <div class='wt-popup-actions'>
+          <button type='button' id='edit-pin-${pin.id}' class='wt-popup-button'>Düzenle</button>
+          <button type='button' id='delete-pin-${pin.id}' class='wt-popup-button wt-popup-button-danger'>İşareti sil</button>
         </div>
       `;
 
@@ -164,7 +162,7 @@ function MapPanel({
       // whole thing keeps its failure from becoming an unhandled rejection.
       popupEl.querySelector(`#delete-pin-${pin.id}`)?.addEventListener('click', () => {
         void (async () => {
-          const confirmed = await showConfirmToast('Bu pini silmek istediginden emin misin?');
+          const confirmed = await showConfirmToast('Bu işaret kalıcı olarak silinsin mi?');
           if (!confirmed) return;
           marker.closePopup();
           try {
@@ -190,50 +188,91 @@ function MapPanel({
     // See the manual-pin effect above: no mapRef guard needed or wanted.
     const layer = newsPinsLayerRef.current;
     layer.clearLayers();
-      newsPins.forEach((pin) => {
-        if (typeof pin.lat !== 'number' || typeof pin.lng !== 'number') return;
-        if (legendFilters.length > 0 && !legendFilters.includes(pin.category)) return;
+
+    // The gazetteer resolves a story to a city's centre, so every Jerusalem
+    // story lands on the same point and stacked markers hid how many there
+    // were ("30 on the map", six visible). Same point, one marker with a count.
+    const groups = new Map<string, NewsPin[]>();
+    newsPins.forEach((pin) => {
+      if (typeof pin.lat !== 'number' || typeof pin.lng !== 'number') return;
+      if (legendFilters.length > 0 && !legendFilters.includes(pin.category)) return;
+      const key = `${pin.lat.toFixed(3)},${pin.lng.toFixed(3)}`;
+      const list = groups.get(key);
+      if (list) list.push(pin);
+      else groups.set(key, [pin]);
+    });
+
+    const popupRow = (pin: NewsPin) => {
+      const crit = isCritical(pin.title);
+      return `
+        <li class='wt-popup-row'>
+          <div class='wt-popup-meta'>
+            <span class='wt-popup-source'${crit ? " data-critical='true'" : ''}>${escapeHtml(pin.source)}</span>
+            <span class='wt-popup-time'>${formatRelativeTime(pin.pubDate)}</span>
+          </div>
+          <a href='${toSafeUrl(pin.link)}' target='_blank' rel='noopener noreferrer' class='wt-popup-row-title'>${escapeHtml(pin.title)}</a>
+        </li>`;
+    };
+
+    groups.forEach((group) => {
+      const [pin] = group;
+      const anyCritical = group.some((p) => isCritical(p.title));
+      const anySaved = group.some((p) => useBookmarkStore.getState().isBookmarked(p.id));
+      const anyWatched = group.some((p) => useWatchlistStore.getState().matches(p.title).length > 0);
+      const isHoveredMismatch = hoveredLegendKey ? !group.some((p) => p.category === hoveredLegendKey) : false;
+
+      if (group.length > 1) {
+        const tone = anyCritical ? 'var(--color-danger)' : anyWatched ? 'var(--color-warning)' : 'var(--color-chart-6)';
+        const marker = L.marker([pin.lat, pin.lng], {
+          icon: L.divIcon({
+            html: `<span class='wt-marker-count' style='--marker-color:${tone}'>${group.length}</span>`,
+            className: '',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+          }),
+          zIndexOffset: anyCritical ? 2000 : anyWatched ? 1500 : 1000,
+          title: `${group.length} haber`
+        });
+        marker.setOpacity(isHoveredMismatch ? 0.2 : 1);
+        const sorted = [...group].sort((a, b) => b.pubDate.localeCompare(a.pubDate));
+        marker.bindPopup(
+          `<div class='wt-popup'>
+            <div class='wt-popup-meta'><span>${group.length} haber bu noktada</span></div>
+            <ul class='wt-popup-list'>${sorted.slice(0, 8).map(popupRow).join('')}</ul>
+            ${group.length > 8 ? `<p class='wt-popup-text'>ve ${group.length - 8} haber daha; tamamı sağdaki akışta.</p>` : ''}
+          </div>`,
+          { maxWidth: 360, minWidth: 300, closeButton: true, autoPan: true, keepInView: true }
+        );
+        layer.addLayer(marker);
+        return;
+      }
 
       const crit = isCritical(pin.title);
-      const isSaved = useBookmarkStore.getState().isBookmarked(pin.id);
-      const watchMatches = useWatchlistStore.getState().matches(pin.title);
-      const isWatched = watchMatches.length > 0;
-      const diff = Date.now() - new Date(pin.pubDate).getTime();
-      const mins = Math.floor(diff / 60000);
-      const relTime = mins < 1 ? 'şimdi'
-        : mins < 60 ? `${mins}dk`
-          : mins < 1440 ? `${Math.floor(mins / 60)}sa`
-            : `${Math.floor(mins / 1440)}g`;
+      const marker = L.marker([pin.lat, pin.lng], {
+        icon: createNewsPinIcon(pin),
+        zIndexOffset: anySaved ? 500 : crit ? 2000 : anyWatched ? 1500 : 0,
+        title: pin.title
+      });
+      marker.setOpacity(isHoveredMismatch ? 0.2 : 1);
 
-        const marker = L.marker([pin.lat, pin.lng], {
-          icon: createNewsPinIcon(pin),
-          zIndexOffset: isSaved ? 500 : crit ? 2000 : isWatched ? 1500 : 0
-        });
-        const isHoveredMismatch = hoveredLegendKey ? hoveredLegendKey !== pin.category : false;
-        marker.setOpacity(isHoveredMismatch ? 0.2 : 1);
-
-      const safeSource = escapeHtml(pin.source.toUpperCase());
-      const safeTitle = escapeHtml(pin.title);
-      const safeSummary = pin.aiSummary ? escapeHtml(pin.aiSummary) : '';
-      const safeLink = toSafeUrl(pin.link);
-
+      const reliabilityTone =
+        pin.confidenceLabel === 'Yüksek'
+          ? 'var(--color-success)'
+          : pin.confidenceLabel === 'Orta'
+            ? 'var(--color-warning)'
+            : 'var(--color-threat-4)';
       marker.bindPopup(`
-        <div style='font-family:Space Grotesk,sans-serif'>
-          <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>
-            <span style='font-family:JetBrains Mono,monospace;font-size:10px;color:${crit ? '#FF4444' : '#00AAFF'};background:rgba(255,255,255,0.05);padding:2px 7px;border-radius:3px'>${safeSource}</span>
-            <span style='font-family:JetBrains Mono,monospace;font-size:10px;color:#5E7A96'>${relTime}</span>
+        <div class='wt-popup'>
+          <div class='wt-popup-meta'>
+            <span class='wt-popup-source'${crit ? " data-critical='true'" : ''}>${escapeHtml(pin.source)}</span>
+            <span class='wt-popup-time'>${formatRelativeTime(pin.pubDate)}</span>
           </div>
-          <p style='font-size:13px;font-weight:600;color:#F0F4F8;line-height:1.45;margin-bottom:10px'>${safeTitle}</p>
-          ${pin.aiSummary ? `
-            <div style='border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;margin-top:4px;margin-bottom:8px'>
-              <div style='font-family:JetBrains Mono,monospace;font-size:9px;color:#F5A623;letter-spacing:1px;margin-bottom:4px'>🤖 AI ÖZETİ</div>
-              <p style='font-size:11px;color:#5E7A96;line-height:1.5'>${safeSummary}</p>
-            </div>
-          ` : ''}
-          <div style='margin-bottom:8px;font-family:JetBrains Mono,monospace;font-size:10px;color:${pin.confidenceLabel === 'Yüksek' ? '#00D084' : pin.confidenceLabel === 'Orta' ? '#F5A623' : '#FF6B00'}'>
-            Güvenilirlik: ${typeof pin.reliabilityScore === 'number' ? `%${pin.reliabilityScore}` : 'Yetersiz veri'}
+          <p class='wt-popup-title'>${escapeHtml(pin.title)}</p>
+          ${pin.aiSummary ? `<p class='wt-popup-text wt-popup-summary'>${escapeHtml(pin.aiSummary)}</p>` : ''}
+          <div class='wt-popup-footer'>
+            <span style='color:${reliabilityTone}'>Güvenilirlik ${typeof pin.reliabilityScore === 'number' ? `%${pin.reliabilityScore}` : ': yetersiz veri'}</span>
+            <a href='${toSafeUrl(pin.link)}' target='_blank' rel='noopener noreferrer' class='wt-popup-link'>Habere git ↗</a>
           </div>
-          <a href='${safeLink}' target='_blank' rel='noopener noreferrer' style='display:inline-block;font-size:11px;color:${crit ? '#FF4444' : '#00AAFF'};text-decoration:none;font-family:JetBrains Mono,monospace;letter-spacing:0.5px'>Haberi Aç ↗</a>
         </div>
       `, {
         maxWidth: 340,
@@ -252,37 +291,24 @@ function MapPanel({
     if (!showNuclear) return;
 
     NUCLEAR_SITES.forEach((site) => {
-      const color = site.country === 'iran' ? '#A78BFA' : '#60A5FA';
+      const color = site.country === 'iran' ? 'var(--color-chart-3)' : 'var(--color-chart-4)';
       const icon = L.divIcon({
-        html: `
-          <div style='
-            width:22px; height:22px;
-            background:${color}22;
-            border:1.5px solid ${color};
-            border-radius:50%;
-            display:flex; align-items:center; justify-content:center;
-            font-size:11px;
-          '>☢</div>
-        `,
+        html: `<span class='wt-marker-hit'><span class='wt-marker wt-marker-site' style='--marker-size:18px;--marker-color:${color}'></span></span>`,
         className: '',
-        iconSize: [22, 22],
-        iconAnchor: [11, 11]
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
       });
 
-      const marker = L.marker([site.lat, site.lng], { icon, zIndexOffset: 800 });
+      const marker = L.marker([site.lat, site.lng], { icon, zIndexOffset: 800, title: `Nükleer tesis: ${site.name}` });
       marker.bindPopup(
         `
-        <div style='font-family:Space Grotesk,sans-serif;min-width:200px'>
-          <div style='font-family:JetBrains Mono,monospace;font-size:9px;
-            color:${color};letter-spacing:1px;margin-bottom:6px'>
-            ☢ ${site.country.toUpperCase()} · ${site.type}
+        <div class='wt-popup'>
+          <div class='wt-popup-meta'>
+            <span class='wt-dot' style='background:${color}'></span>
+            Nükleer tesis · ${escapeHtml(site.country === 'iran' ? 'İran' : 'İsrail')} · ${escapeHtml(site.type)}
           </div>
-          <p style='font-size:13px;font-weight:600;color:#F0F4F8;margin:0 0 6px'>
-            ${site.name}
-          </p>
-          <p style='font-size:11px;color:#5E7A96;margin:0;font-style:italic'>
-            ${site.note}
-          </p>
+          <p class='wt-popup-title'>${escapeHtml(site.name)}</p>
+          <p class='wt-popup-text'>${escapeHtml(site.note)}</p>
         </div>
       `,
         { maxWidth: 280, closeButton: true, keepInView: true }
@@ -297,7 +323,7 @@ function MapPanel({
     if (!showSam) return;
 
     SAM_SYSTEMS.forEach((sys) => {
-      const color = sys.country === 'iran' ? '#F87171' : '#34D399';
+      const color = sys.country === 'iran' ? tokenColor('--color-chart-1') : tokenColor('--color-chart-5');
 
       L.circle([sys.lat, sys.lng], {
         radius: sys.radiusKm * 1000,
@@ -332,8 +358,8 @@ function MapPanel({
     newsPins.forEach((pin) => {
       if (typeof pin.lat !== 'number' || typeof pin.lng !== 'number') return;
       const isHighSev = isCritical(pin.title);
-      const outerColor = isHighSev ? '#FF3B3B' : '#F5A623';
-      const innerColor = isHighSev ? '#FF0000' : '#FF6B00';
+      const outerColor = isHighSev ? tokenColor('--color-threat-5') : tokenColor('--color-threat-3');
+      const innerColor = isHighSev ? tokenColor('--color-threat-5') : tokenColor('--color-threat-4');
 
       L.circle([pin.lat, pin.lng], {
         radius: isHighSev ? 75000 : 40000,
@@ -354,7 +380,7 @@ function MapPanel({
   }, [showHeatmap, newsPins]);
 
   return (
-    <section className="panel" style={{ overflow: 'hidden', position: 'relative' }}>
+    <section className="panel wt-map" aria-label="Harita">
       <div style={{ width: '100%', height: '100%', position: 'relative' }}>
           <MapContainer
             center={mapCenter}
@@ -363,7 +389,10 @@ function MapPanel({
             attributionControl={false}
             style={{ width: '100%', height: '100%', cursor: drawActive || pinMode ? 'crosshair' : 'grab' }}
           >
-            <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+            <TileLayer url={BASEMAP.tileUrl} maxNativeZoom={BASEMAP.maxNativeZoom} />
+            {BASEMAP.labelsUrl ? (
+              <TileLayer url={BASEMAP.labelsUrl} maxNativeZoom={BASEMAP.maxNativeZoom} />
+            ) : null}
             <MapBootstrap
               mapRef={mapRef}
               manualPinsLayer={manualPinsLayer}
@@ -380,218 +409,86 @@ function MapPanel({
             <ViewportSync center={workspace.center} zoom={workspace.zoom} />
           </MapContainer>
 
-        <div
-          style={{
-            position: 'absolute',
-            top: 12,
-            left: 12,
-            zIndex: 'var(--z-map-controls)',
-            background: 'rgba(2,5,10,0.85)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 'var(--radius)',
-            padding: 3,
-            display: 'inline-flex',
-            gap: 2
-          }}
-        >
-          {WORKSPACES.map((ws) => {
-            const active = ws.id === activeWorkspace;
-            return (
-              <button
-                key={ws.id}
-                type="button"
-                onClick={() => setActiveWorkspace(ws.id)}
-                onMouseEnter={(e) => {
-                  if (active) return;
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                }}
-                onMouseLeave={(e) => {
-                  if (active) return;
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.35)';
-                  e.currentTarget.style.background = 'transparent';
-                }}
-                style={{
-                  padding: '5px 12px',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 10,
-                  letterSpacing: 1.5,
-                  textTransform: 'uppercase',
-                  border: 'none',
-                  background: active ? '#00AAFF' : 'transparent',
-                  color: active ? '#000000' : 'rgba(255,255,255,0.35)',
-                  cursor: 'pointer',
-                  borderRadius: 'calc(var(--radius) - 2px)',
-                  fontWeight: active ? 600 : 500,
-                  transition: 'all 0.15s'
-                }}
-              >
-                {ws.name}
-              </button>
-            );
-          })}
+        <div className="wt-map-control wt-map-theatres segment-container" role="tablist" aria-label="Harita bölgesi">
+          {WORKSPACES.map((ws) => (
+            <button
+              key={ws.id}
+              type="button"
+              role="tab"
+              aria-selected={ws.id === activeWorkspace}
+              className={`segment-item${ws.id === activeWorkspace ? ' segment-item-active' : ''}`}
+              onClick={() => setActiveWorkspace(ws.id)}
+            >
+              {ws.name}
+            </button>
+          ))}
         </div>
 
-        <div
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            zIndex: 'var(--z-map-controls)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            background: 'rgba(2,5,10,0.85)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 'var(--radius)',
-            padding: 4,
-            overflow: 'hidden'
-          }}
-        >
+        <div className="wt-map-control wt-map-tools" role="toolbar" aria-label="Harita araçları" aria-orientation="vertical">
           <button
             type="button"
-            title="Pin Modu"
+            className="wt-map-tool"
+            aria-pressed={pinMode}
+            aria-label="İşaret koy"
+            title="İşaret koy: haritada bir noktaya tıklayın"
             onClick={() => setPinMode((v) => !v)}
-            style={{
-              width: 32,
-              height: 32,
-              background: pinMode ? 'var(--accent)' : 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: pinMode ? '#000000' : 'rgba(255,255,255,0.4)',
-              fontSize: 15,
-              borderRadius: 'calc(var(--radius) - 2px)',
-              transition: 'all 0.12s'
-            }}
           >
-            ◉
+            <MapPin size={16} strokeWidth={1.75} />
           </button>
-
           <button
             type="button"
-            title="Cizim Araclari"
+            className="wt-map-tool"
+            aria-pressed={drawActive}
+            aria-label="Çizim araçları"
+            title="Çizim araçları"
             onClick={toggleDraw}
-            style={{
-              width: 32,
-              height: 32,
-              background: drawActive ? 'var(--accent)' : 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: drawActive ? '#000000' : 'rgba(255,255,255,0.4)',
-              fontSize: 15,
-              borderRadius: 'calc(var(--radius) - 2px)',
-              transition: 'all 0.12s'
-            }}
           >
-            ✏
+            <PenLine size={16} strokeWidth={1.75} />
           </button>
-
-          <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
-
+          <span className="wt-map-tools-divider" aria-hidden="true" />
           <button
             type="button"
+            className="wt-map-tool"
+            aria-pressed={showNuclear}
+            aria-label="Nükleer tesisler katmanı"
+            title="Nükleer tesisler"
             onClick={() => toggleLayer('nuclear')}
-            title="Nükleer Tesisler"
-            style={{
-              width: 32,
-              height: 32,
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 14,
-              borderRadius: 'var(--radius-sm)',
-              color: showNuclear ? '#A78BFA' : 'rgba(255,255,255,0.3)',
-              background: showNuclear ? 'rgba(167,139,250,0.12)' : 'none',
-              transition: 'all 0.12s'
-            }}
           >
-            ☢
+            <Radiation size={16} strokeWidth={1.75} />
           </button>
-
           <button
             type="button"
+            className="wt-map-tool"
+            aria-pressed={showSam}
+            aria-label="Hava savunma menzilleri katmanı"
+            title="Hava savunma (SAM) menzilleri"
             onClick={() => toggleLayer('sam')}
-            title="SAM & Tehdit Menzilleri"
-            style={{
-              width: 32,
-              height: 32,
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 14,
-              borderRadius: 'var(--radius-sm)',
-              color: showSam ? '#34D399' : 'rgba(255,255,255,0.3)',
-              background: showSam ? 'rgba(52,211,153,0.12)' : 'none',
-              transition: 'all 0.12s'
-            }}
           >
-            🎯
+            <Radar size={16} strokeWidth={1.75} />
           </button>
-
           <button
             type="button"
+            className="wt-map-tool"
+            aria-pressed={showHeatmap}
+            aria-label="Olay yoğunluğu katmanı"
+            title="Olay yoğunluğu (sıcak noktalar)"
             onClick={() => toggleLayer('heatmap')}
-            title="Olay Yoğunluk / Sıcak Noktalar (Heatmap)"
-            style={{
-              width: 32,
-              height: 32,
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 14,
-              borderRadius: 'var(--radius-sm)',
-              color: showHeatmap ? '#FF6B00' : 'rgba(255,255,255,0.3)',
-              background: showHeatmap ? 'rgba(255,107,0,0.14)' : 'none',
-              transition: 'all 0.12s'
-            }}
           >
-            🔥
+            <Flame size={16} strokeWidth={1.75} />
           </button>
         </div>
 
         <DrawToolbar />
 
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 12,
-            left: 12,
-            zIndex: 'var(--z-map-controls)',
-            background: 'rgba(2,5,10,0.7)',
-            backdropFilter: 'blur(8px)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '3px 9px',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
-            color: 'rgba(255,255,255,0.35)',
-            letterSpacing: 0.5
-          }}
-        >
-          {coords[0].toFixed(4)}, {coords[1].toFixed(4)}
+        <div className="wt-map-control wt-map-readout wt-map-readout-left">
+          <span className="tabular-nums">
+            {coords[0].toFixed(4)}, {coords[1].toFixed(4)}
+          </span>
+          <span className="wt-map-attribution">{BASEMAP.attribution}</span>
         </div>
 
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 12,
-            right: 12,
-            zIndex: 'var(--z-map-controls)',
-            background: 'rgba(2,5,10,0.7)',
-            backdropFilter: 'blur(8px)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '3px 9px',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
-            color: 'rgba(255,255,255,0.45)',
-            letterSpacing: 0.5,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5
-          }}
-        >
-          <span style={{ color: 'var(--accent)' }}>◈</span>
-          <span>{newsPins.length} haber</span>
+        <div className="wt-map-control wt-map-readout wt-map-readout-right">
+          <span className="tabular-nums">{newsPins.length}</span> haber haritada
         </div>
 
         <MapLegend

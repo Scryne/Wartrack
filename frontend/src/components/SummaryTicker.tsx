@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSettingsStore } from '../stores/useSettingsStore';
+import { Pause, Play, Sparkles } from 'lucide-react';
 import { hasDisallowedScript, sanitizeTextOutput } from '../lib/textGuard';
 import { apiFetch } from '../lib/api';
 
@@ -12,7 +12,6 @@ interface TickerSummary {
 function SummaryTicker() {
   const [items, setItems] = useState<TickerSummary[]>([]);
   const [paused, setPaused] = useState(false);
-  const aiModel = useSettingsStore((s) => s.aiModel);
 
   const fetchLatest = useCallback(async () => {
     try {
@@ -41,83 +40,35 @@ function SummaryTicker() {
   }, [fetchLatest]);
 
   const stream = useMemo(() => {
-    const compact = (text: string) => (text.length > 120 ? `${text.slice(0, 120).trim()}...` : text);
-    if (items.length === 0) return '◈ [SISTEM] — Turkce AI ozetleri hazirlaniyor';
-    return items.map((item) => `◈ [${item.source.toUpperCase()}] — ${compact(item.aiSummary)}`).join('  ·  ');
+    const compact = (text: string) => (text.length > 140 ? `${text.slice(0, 140).trim()}…` : text);
+    if (items.length === 0) return 'Özet bekleniyor: yeni haberler yerel modelle Türkçe özetleniyor.';
+    return items.map((item) => `${item.source}: ${compact(item.aiSummary)}`).join('   ·   ');
   }, [items]);
 
   return (
-    <footer
-      style={{
-        height: 'var(--ticker-h)',
-        background: 'var(--bg-void)',
-        borderTop: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        overflow: 'hidden',
-        flexShrink: 0
-      }}
-    >
-      <div
-        style={{
-          borderRight: '1px solid var(--border)',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 10,
-          color: 'var(--accent)',
-          letterSpacing: 1.5,
-          padding: '0 12px',
-          flexShrink: 0,
-          width: 80,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6
-        }}
-      >
-        ◈ AI
-      </div>
+    <footer className="wt-ticker" aria-label="Son özetler">
+      <span className="wt-ticker-label">
+        <Sparkles size={13} strokeWidth={1.75} aria-hidden="true" />
+        Son özetler
+      </span>
 
-      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        <div
-          style={{
-            whiteSpace: 'nowrap',
-            display: 'inline-block',
-            animation: 'ticker-run 60s linear infinite',
-            animationPlayState: paused ? 'paused' : 'running',
-            fontFamily: 'var(--font-sans)',
-            fontSize: 11,
-            color: 'var(--text-secondary)'
-          }}
-        >
-          {stream}
-          {stream}
+      <div className="wt-ticker-track">
+        {/* Duplicated for a seamless loop; the copy is hidden from assistive tech. */}
+        <div className="wt-ticker-run" data-paused={paused}>
+          <span>{stream}</span>
+          <span aria-hidden="true">{stream}</span>
         </div>
       </div>
 
-      <div
-        style={{
-          borderLeft: '1px solid var(--border)',
-          padding: '0 12px',
-          flexShrink: 0,
-          width: 80,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8
-        }}
+      <button
+        type="button"
+        className="btn-ghost wt-icon-button wt-ticker-toggle"
+        aria-pressed={paused}
+        aria-label={paused ? 'Kaydırmayı sürdür' : 'Kaydırmayı durdur'}
+        onClick={() => setPaused((v) => !v)}
       >
-        <span
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 9,
-            letterSpacing: 1,
-            color: aiModel === 'ollama' ? 'var(--green)' : 'var(--amber)'
-          }}
-        >
-          {aiModel.toUpperCase()}
-        </span>
-        <button className="btn-ghost" onClick={() => setPaused((v) => !v)} style={{ fontSize: 11 }}>
-          {paused ? '▶' : '⏸'}
-        </button>
-      </div>
+        {paused ? <Play size={14} strokeWidth={1.75} /> : <Pause size={14} strokeWidth={1.75} />}
+      </button>
     </footer>
   );
 }

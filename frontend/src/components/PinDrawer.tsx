@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { useMapStore } from '../stores/useMapStore';
 import type { Pin } from '../types';
-import { apiFetch } from '../lib/api';
+import { ApiKeyError, apiFetch } from '../lib/api';
+import { showToast } from './Toast';
+import { PIN_COLOR } from '../panels/mapPanel/mapUtils';
+
+const CATEGORIES: Array<{ id: Pin['category']; label: string }> = [
+  { id: 'strike', label: 'Taarruz' },
+  { id: 'movement', label: 'Hareket' },
+  { id: 'nuclear', label: 'Nükleer' },
+  { id: 'naval', label: 'Deniz' },
+  { id: 'air', label: 'Hava' },
+  { id: 'info', label: 'Bilgi' }
+];
 
 interface PinDrawerProps {
   draftLatLng: [number, number] | null;
@@ -19,9 +31,12 @@ function PinDrawer({ draftLatLng, setDraftLatLng, setPinMode }: PinDrawerProps) 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<Pin['category']>('info');
+  const [saving, setSaving] = useState(false);
+  const [titleError, setTitleError] = useState(false);
 
   useEffect(() => {
     if (!pinDrawerOpen) return;
+    setTitleError(false);
     if (editingPin) {
       setTitle(editingPin.title);
       setDescription(editingPin.description ?? '');
@@ -39,16 +54,17 @@ function PinDrawer({ draftLatLng, setDraftLatLng, setPinMode }: PinDrawerProps) 
   };
 
   const handleSave = async () => {
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      setTitleError(true);
+      return;
+    }
 
+    setSaving(true);
     try {
       if (editingPin) {
-        await updatePin(editingPin.id, {
-          title: title.trim(),
-          description: description.trim(),
-          category
-        });
+        await updatePin(editingPin.id, { title: title.trim(), description: description.trim(), category });
         closeDrawer();
+        showToast('İşaret güncellendi', 'success');
         return;
       }
 
@@ -64,7 +80,7 @@ function PinDrawer({ draftLatLng, setDraftLatLng, setPinMode }: PinDrawerProps) 
           category
         })
       });
-      if (!res.ok) throw new Error('pin create failed');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const pin = (await res.json()) as Pin;
       addPin(pin);
       setTitle('');
@@ -73,105 +89,98 @@ function PinDrawer({ draftLatLng, setDraftLatLng, setPinMode }: PinDrawerProps) 
       setDraftLatLng(null);
       setPinMode(false);
       closeDrawer();
-    } catch {
-      return;
+      showToast('İşaret haritaya eklendi', 'success');
+    } catch (err) {
+      // A missing or wrong key already raised its own toast in apiFetch.
+      if (!(err instanceof ApiKeyError)) {
+        showToast('İşaret kaydedilemedi. Sunucu bağlantısını kontrol edip tekrar deneyin.', 'error');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
+  const position = editingPin ? ([editingPin.lat, editingPin.lng] as [number, number]) : draftLatLng;
+
   return (
-    <aside
-      style={{
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        height: '100%',
-        width: 280,
-        zIndex: 'var(--z-map-panels)',
-        background: 'var(--bg-surface)',
-        borderLeft: '1px solid var(--border-strong)',
-        transition: 'transform 0.2s ease-out',
-        transform: pinDrawerOpen ? 'translateX(0)' : 'translateX(100%)',
-        display: 'flex',
-        flexDirection: 'column'
-      }}
-    >
-      <div className="panel-header" style={{ background: 'transparent' }}>
-        <span className="panel-title">{editingPin ? 'PINI DUZENLE' : 'YENI PIN'}</span>
-        <button className="btn-ghost" onClick={onClose}>
-          x
+    <aside className="wt-brief wt-pin-drawer" data-open={pinDrawerOpen} aria-hidden={!pinDrawerOpen} aria-labelledby="wt-pin-title">
+      <header className="wt-brief-header">
+        <h2 id="wt-pin-title" className="wt-brief-title">
+          {editingPin ? 'İşareti düzenle' : 'Yeni işaret'}
+        </h2>
+        <button type="button" className="btn-ghost wt-icon-button" onClick={onClose} aria-label="Kapat" tabIndex={pinDrawerOpen ? 0 : -1}>
+          <X size={16} strokeWidth={1.75} />
         </button>
-      </div>
-      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Baslik"
-          style={{
-            height: 30,
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-primary)',
-            fontFamily: 'var(--font-sans)',
-            padding: '0 9px',
-            borderRadius: 'var(--radius-sm)'
-          }}
-        />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Aciklama"
-          rows={4}
-          style={{
-            resize: 'none',
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-primary)',
-            fontFamily: 'var(--font-sans)',
-            padding: 9,
-            borderRadius: 'var(--radius-sm)'
-          }}
-        />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-          {['strike', 'movement', 'nuclear', 'naval', 'air', 'info'].map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setCategory(item as Pin['category'])}
-              style={{
-                border: '1px solid var(--border)',
-                background: category === item ? 'var(--accent-dim)' : 'transparent',
-                color: category === item ? 'var(--accent)' : 'var(--text-secondary)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '5px 6px',
-                fontSize: 10,
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                cursor: 'pointer'
-              }}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            void handleSave();
-          }}
-          style={{
-            height: 32,
-            borderRadius: 'var(--radius-sm)',
-            border: 'none',
-            background: 'var(--accent)',
-            color: '#001018',
-            fontFamily: 'var(--font-mono)',
-            fontWeight: 700,
-            cursor: 'pointer'
-          }}
-        >
-          {editingPin ? 'PINI GUNCELLE' : 'PIN KAYDET'}
+      </header>
+
+      <form
+        className="wt-brief-body wt-pin-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSave();
+        }}
+      >
+        <p className="wt-settings-hint">
+          {position
+            ? `Konum: ${position[0].toFixed(4)}, ${position[1].toFixed(4)}`
+            : 'Konum seçmek için haritada bir noktaya tıklayın.'}
+        </p>
+
+        <label className="wt-field">
+          <span className="wt-field-label">Başlık</span>
+          <input
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              if (e.target.value.trim()) setTitleError(false);
+            }}
+            placeholder="Ör. Hayfa limanı, hava savunma aktivitesi"
+            aria-invalid={titleError}
+            aria-describedby={titleError ? 'wt-pin-title-error' : undefined}
+            tabIndex={pinDrawerOpen ? 0 : -1}
+          />
+          {titleError ? (
+            <span id="wt-pin-title-error" className="wt-field-error">
+              Başlık gerekli: işaret haritada bu adla görünür.
+            </span>
+          ) : null}
+        </label>
+
+        <label className="wt-field">
+          <span className="wt-field-label">Not (isteğe bağlı)</span>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Kaynak, saat veya gözlem ayrıntısı"
+            rows={4}
+            tabIndex={pinDrawerOpen ? 0 : -1}
+          />
+        </label>
+
+        <fieldset className="wt-field">
+          <legend className="wt-field-label">Tür</legend>
+          <div className="wt-pin-categories" role="radiogroup" aria-label="İşaret türü">
+            {CATEGORIES.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="radio"
+                aria-checked={category === item.id}
+                className="wt-legend-item"
+                onClick={() => setCategory(item.id)}
+                tabIndex={pinDrawerOpen ? 0 : -1}
+              >
+                <span className="wt-legend-swatch wt-legend-diamond" style={{ '--marker-color': PIN_COLOR[item.id] } as React.CSSProperties} aria-hidden="true" />
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <button type="submit" className="btn-primary" disabled={saving || (!editingPin && !draftLatLng)} tabIndex={pinDrawerOpen ? 0 : -1}>
+          {saving ? 'Kaydediliyor…' : editingPin ? 'Değişiklikleri kaydet' : 'İşareti kaydet'}
         </button>
-      </div>
+      </form>
     </aside>
   );
 }

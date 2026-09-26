@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { Pin, Workspace } from '../types';
+import type { Pin } from '../types';
+import { WORKSPACES } from '../data/workspaces';
 import { apiFetch } from '../lib/api';
 
 export interface NewsPin {
@@ -18,11 +19,6 @@ export interface NewsPin {
   insufficientData?: boolean;
 }
 
-const WORKSPACES: Workspace[] = [
-  { id: 'iran-israel', name: 'İRAN·İSRAİL', center: [32.0, 36.5], zoom: 6 },
-  { id: 'red-sea', name: 'KIZILDENİZ', center: [18.0, 43.0], zoom: 6 },
-  { id: 'syria', name: 'SURİYE', center: [35.0, 38.5], zoom: 7 }
-];
 
 interface MapStoreState {
   pins: Pin[];
@@ -111,7 +107,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
       body: JSON.stringify(data)
     });
     if (!response.ok) {
-      throw new Error('Pin guncellenemedi');
+      throw new Error('İşaret güncellenemedi');
     }
     set((state) => ({
       pins: state.pins.map((pin) => (pin.id === id ? { ...pin, ...data } : pin)),

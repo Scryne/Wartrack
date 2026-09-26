@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { ExternalLink, Link2 } from 'lucide-react';
 
 export interface StreamChannel {
   id: string;
@@ -8,62 +9,80 @@ export interface StreamChannel {
   externalUrl: string;
 }
 
+const EMBED_PARAMS = 'autoplay=1&mute=1&rel=0&modestbranding=1';
+
+/**
+ * A 24/7 broadcast gets a new video ID whenever the channel restarts it, so a
+ * hard-coded ID eventually shows "video unavailable" (four of eight had done so
+ * by 2026-09). Where YouTube serves it, the channel form
+ * (embed/live_stream?channel=) follows the current broadcast by itself; the
+ * others pin today's ID. externalUrl always points at the channel's /live page,
+ * which never goes stale, so "Aç" still works after an embed ID has rotted.
+ */
+// youtube-nocookie.com: YouTube's privacy-enhanced embed host. Same player,
+// no tracking cookies set by merely opening the dashboard.
+const EMBED_HOST = 'https://www.youtube-nocookie.com/embed';
+const byChannel = (channelId: string) => `${EMBED_HOST}/live_stream?channel=${channelId}&${EMBED_PARAMS}`;
+const byVideo = (videoId: string) => `${EMBED_HOST}/${videoId}?${EMBED_PARAMS}`;
+const livePage = (handle: string) => `https://www.youtube.com/@${handle}/live`;
+
 export const PRESET_CHANNELS: StreamChannel[] = [
   {
     id: 'aljazeera-en',
     name: 'Al Jazeera EN',
     category: 'HABER',
-    embedUrl: 'https://www.youtube.com/embed/gCNeDWCI0wo?autoplay=1&mute=1&rel=0&modestbranding=1',
-    externalUrl: 'https://www.youtube.com/watch?v=gCNeDWCI0wo'
+    embedUrl: byChannel('UCNye-wNBqNL5ZzHSJj3l8Bg'),
+    externalUrl: livePage('aljazeeraenglish')
   },
   {
     id: 'aljazeera-ar',
     name: 'Al Jazeera AR',
     category: 'HABER',
-    embedUrl: 'https://www.youtube.com/embed/bNyUyrR0PHo?autoplay=1&mute=1&rel=0&modestbranding=1',
-    externalUrl: 'https://www.youtube.com/watch?v=bNyUyrR0PHo'
+    embedUrl: byVideo('N8xxOD0nT1Y'),
+    externalUrl: livePage('aljazeera')
   },
   {
     id: 'france24-en',
     name: 'France 24 EN',
     category: 'HABER',
-    embedUrl: 'https://www.youtube.com/embed/h3MuIUNCCzI?autoplay=1&mute=1&rel=0&modestbranding=1',
-    externalUrl: 'https://www.youtube.com/watch?v=h3MuIUNCCzI'
+    embedUrl: byVideo('HvZt-nh9sGg'),
+    externalUrl: livePage('France24_en')
   },
   {
-    id: 'france24-ar',
-    name: 'France 24 AR',
+    id: 'france24-fr',
+    name: 'France 24 FR',
     category: 'HABER',
-    embedUrl: 'https://www.youtube.com/embed/l8PMl7tUDIE?autoplay=1&mute=1&rel=0&modestbranding=1',
-    externalUrl: 'https://www.youtube.com/watch?v=l8PMl7tUDIE'
+    embedUrl: byVideo('a47ckXKZjxI'),
+    externalUrl: livePage('FRANCE24')
   },
   {
     id: 'skynews',
-    name: 'Sky News Live',
+    name: 'Sky News',
     category: 'HABER',
-    embedUrl: 'https://www.youtube.com/embed/9Auq9mYxFEE?autoplay=1&mute=1&rel=0&modestbranding=1',
-    externalUrl: 'https://www.youtube.com/watch?v=9Auq9mYxFEE'
+    embedUrl: byVideo('SPtvJn-RRZE'),
+    externalUrl: livePage('SkyNews')
   },
   {
     id: 'dw-en',
     name: 'DW News EN',
     category: 'HABER',
-    embedUrl: 'https://www.youtube.com/embed/lu_Z7BPbK70?autoplay=1&mute=1&rel=0&modestbranding=1',
-    externalUrl: 'https://www.youtube.com/watch?v=lu_Z7BPbK70'
+    embedUrl: byChannel('UCknLrEdhRCp1aegoMqRaCZg'),
+    externalUrl: livePage('dwnews')
   },
   {
     id: 'bloomberg',
     name: 'Bloomberg TV',
-    category: 'FINANS / HABER',
-    embedUrl: 'https://www.youtube.com/embed/dp8PhLsUcFE?autoplay=1&mute=1&rel=0&modestbranding=1',
-    externalUrl: 'https://www.youtube.com/watch?v=dp8PhLsUcFE'
+    category: 'FİNANS / HABER',
+    embedUrl: byVideo('QB5BNdBFujE'),
+    externalUrl: livePage('markets')
   },
   {
-    id: 'tactical-default',
-    name: 'WARTRACKER Taktik',
-    category: 'IZLEME',
-    embedUrl: 'https://www.youtube.com/embed/4E-iFtUM2kk?autoplay=1&mute=1&rel=0&modestbranding=1',
-    externalUrl: 'https://www.youtube.com/watch?v=4E-iFtUM2kk'
+    // Third-party OSINT channel re-streaming public city cameras in the region.
+    id: 'intel-cams',
+    name: 'Bölge Kameraları',
+    category: 'İZLEME',
+    embedUrl: byVideo('5WPpZzGcFnI'),
+    externalUrl: livePage('intelcamslive')
   }
 ];
 
@@ -73,16 +92,17 @@ const CUSTOM_URL_KEY = 'wartracker-custom-stream-url';
 function extractYoutubeEmbed(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith('https://www.youtube.com/embed/')) return trimmed;
+  if (trimmed.startsWith('https://www.youtube.com/embed/')) return trimmed.replace('https://www.youtube.com/embed', EMBED_HOST);
+  if (trimmed.startsWith(`${EMBED_HOST}/`)) return trimmed;
 
   const vMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (vMatch) return `https://www.youtube.com/embed/${vMatch[1]}?autoplay=1&mute=1&rel=0`;
+  if (vMatch) return byVideo(vMatch[1]);
 
   const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-  if (shortMatch) return `https://www.youtube.com/embed/${shortMatch[1]}?autoplay=1&mute=1&rel=0`;
+  if (shortMatch) return byVideo(shortMatch[1]);
 
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
-    return `https://www.youtube.com/embed/${trimmed}?autoplay=1&mute=1&rel=0`;
+    return byVideo(trimmed);
   }
 
   return trimmed.startsWith('http') ? trimmed : null;
@@ -106,8 +126,8 @@ function MediaPanel() {
       const embed = extractYoutubeEmbed(customUrl);
       return {
         id: 'custom',
-        name: 'Özel Akış',
-        category: 'OZEL',
+        name: 'Özel yayın',
+        category: 'ÖZEL',
         embedUrl: embed ?? PRESET_CHANNELS[0].embedUrl,
         externalUrl: customUrl || PRESET_CHANNELS[0].externalUrl
       };
@@ -121,53 +141,24 @@ function MediaPanel() {
   };
 
   return (
-    <section className="panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div
-        className="panel-header"
-        style={{
-          height: 34,
-          minHeight: 34,
-          padding: '0 10px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'var(--bg-elevated)',
-          borderBottom: '1px solid var(--border)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              background: 'var(--red)',
-              boxShadow: '0 0 6px var(--red)',
-              animation: 'blink-red 1.5s infinite'
-            }}
-          />
-          <span className="panel-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: 1 }}>
-            CANLI YAYIN
-          </span>
+    <section className="panel" aria-labelledby="wt-media-title">
+      <div className="panel-header wt-media-header">
+        <div className="wt-panel-heading">
+          <span className="wt-live-dot wt-media-dot" aria-hidden="true" />
+          <h2 id="wt-media-title" className="panel-title">
+            Canlı yayın
+          </h2>
+          <label className="sr-only" htmlFor="wt-media-channel">
+            Yayın kanalı
+          </label>
           <select
+            id="wt-media-channel"
+            className="wt-select"
             value={selectedId}
             onChange={(e) => {
               const val = e.target.value;
               setSelectedId(val);
-              if (val === 'custom') setShowCustomInput(true);
-              else setShowCustomInput(false);
-            }}
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              background: 'var(--bg-void)',
-              color: 'var(--accent)',
-              border: '1px solid var(--border-strong)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '2px 6px',
-              cursor: 'pointer',
-              outline: 'none',
-              maxWidth: 130
+              setShowCustomInput(val === 'custom');
             }}
           >
             {PRESET_CHANNELS.map((ch) => (
@@ -175,76 +166,51 @@ function MediaPanel() {
                 {ch.name}
               </option>
             ))}
-            <option value="custom">+ Özel URL...</option>
+            <option value="custom">Başka bir yayın…</option>
           </select>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {selectedId === 'custom' && (
+        <div className="wt-panel-heading">
+          {selectedId === 'custom' ? (
             <button
-              className="btn-ghost"
+              type="button"
+              className="btn-ghost wt-icon-button"
+              aria-expanded={showCustomInput}
+              aria-label="Yayın bağlantısını düzenle"
               onClick={() => setShowCustomInput((v) => !v)}
-              style={{ fontSize: 10, padding: '2px 6px' }}
-              title="Özel URL'yi düzenle"
             >
-              ⚙
+              <Link2 size={15} strokeWidth={1.75} />
             </button>
-          )}
+          ) : null}
           <a
+            className="btn-ghost wt-icon-button"
             href={activeChannel.externalUrl}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              color: 'var(--text-muted)',
-              textDecoration: 'none',
-              transition: 'color 0.15s'
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+            aria-label={`${activeChannel.name} yayınını YouTube'da aç`}
+            title="YouTube'da aç"
           >
-            Aç ↗
+            <ExternalLink size={15} strokeWidth={1.75} />
           </a>
         </div>
       </div>
 
-      {showCustomInput && selectedId === 'custom' && (
-        <div
-          style={{
-            padding: '6px 10px',
-            background: 'var(--bg-panel)',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            gap: 6
-          }}
-        >
-          <input
-            type="text"
-            placeholder="YouTube canlı yayın linki veya Video ID..."
-            value={customUrl}
-            onChange={(e) => handleSaveCustomUrl(e.target.value)}
-            style={{
-              flex: 1,
-              background: 'var(--bg-void)',
-              border: '1px solid var(--border-strong)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--text-primary)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              padding: '4px 8px',
-              outline: 'none'
-            }}
-          />
-          <button
-            className="btn-ghost"
-            onClick={() => setShowCustomInput(false)}
-            style={{ fontSize: 10, padding: '2px 8px' }}
-          >
-            Tamam
+      {showCustomInput && selectedId === 'custom' ? (
+        <div className="wt-media-custom">
+          <label className="wt-search">
+            <span className="sr-only">YouTube bağlantısı veya video kimliği</span>
+            <input
+              type="url"
+              placeholder="YouTube bağlantısı veya 11 karakterlik video kimliği"
+              value={customUrl}
+              onChange={(e) => handleSaveCustomUrl(e.target.value)}
+            />
+          </label>
+          <button type="button" className="btn-secondary wt-btn-sm" onClick={() => setShowCustomInput(false)}>
+            Yayını aç
           </button>
         </div>
-      )}
+      ) : null}
 
       <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: 0 }}>
         <iframe
@@ -253,8 +219,12 @@ function MediaPanel() {
           height="100%"
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           src={activeChannel.embedUrl}
-          title={`WARTRACKER ${activeChannel.name}`}
+          title={`Canlı yayın: ${activeChannel.name}`}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          // YouTube refuses to play embeds that arrive without a referrer
+          // (player error 153); pin the policy so a stricter site-wide default
+          // cannot silently break every stream.
+          referrerPolicy="strict-origin-when-cross-origin"
           allowFullScreen
         />
       </div>
