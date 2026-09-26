@@ -169,6 +169,16 @@ export function resolveSafeBackupPath(backupPathOrFilename: string, customBackup
     // ignore decode error
   }
 
+  // POSIX'te "\" sıradan bir karakterdir: "..\..\x.db" Linux'ta tek bir dosya adına dönüşür ve
+  // denetimden geçerdi. Saldırı girdisi her platformda aynı sonucu vermeli; Windows ayırıcısı
+  // POSIX'te de ayırıcı sayılır, sürücü harfli yol ise POSIX'te meşru olamaz.
+  if (path.sep === "/") {
+    if (/^[a-zA-Z]:[\\/]/.test(decoded)) {
+      throw new Error(`PATH TRAVERSAL BLOCKED: Backup path "${backupPathOrFilename}" is outside the authorized backup directory.`);
+    }
+    decoded = decoded.replace(/\\/g, "/");
+  }
+
   // If candidate is a simple filename or relative path, resolve inside backupDir
   const candidate = path.isAbsolute(decoded)
     ? path.resolve(decoded)
@@ -301,7 +311,8 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupR
     try {
       const existingEntries = fs.readdirSync(destDir);
       for (const entry of existingEntries) {
-        if (entry.startsWith("wartracker-backup-") && entry.endsWith(".tmp")) {
+        // Also the -wal/-shm sidecars earlier versions left beside every snapshot.
+        if (entry.startsWith("wartracker-backup-") && /\.tmp(-wal|-shm)?$/.test(entry)) {
           try {
             fs.unlinkSync(path.join(destDir, entry));
           } catch {
@@ -322,6 +333,17 @@ export async function createBackup(options: BackupOptions = {}): Promise<BackupR
 
     // 1. Perform online consistent snapshot via better-sqlite3 backup API
     await activeDb.backup(tempPath);
+
+    // The snapshot inherits the live database's WAL mode, so every later open
+    // (even the read-only integrity check) creates -wal/-shm sidecars. Those were
+    // orphaned by the rename below and never rotated. A backup is an archive,
+    // not a live database: make it one self-contained file.
+    const snapshotDb = new Database(tempPath, { fileMustExist: true });
+    try {
+      snapshotDb.pragma("journal_mode = DELETE");
+    } finally {
+      snapshotDb.close();
+    }
 
     // 2. Verify integrity of the created snapshot
     const integrity = verifyBackupIntegrity(tempPath);

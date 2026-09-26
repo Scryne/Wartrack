@@ -13,3 +13,5 @@ backend/dist/
 .logs/
 design/shots/
 .env.claude
+# Runtime backups (BACKUP_DIR default); never source.
+backups/
