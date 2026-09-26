@@ -98,6 +98,7 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
 
   it("CONCURRENCY STRESS: measures write latency and zero SQLITE_BUSY errors during active backup", async () => {
     const TOTAL_WRITES = 1000;
+    const MIN_SAMPLES = 100;
     const writeLatencies: number[] = [];
     let busyErrorCount = 0;
     let otherErrorCount = 0;
@@ -153,6 +154,11 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
       backupResults.push(res);
     }
 
+    // Yedek hızlı biterse (Linux CI) yazıcı 100 örneğe ulaşmadan durur ve p95 anlamsızlaşır;
+    // örneklem, yedeklerin süresine değil bu alt sınıra bağlı olsun.
+    while (writeIndex < MIN_SAMPLES) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
     stopWriting = true;
     await writerPromise;
 
@@ -162,7 +168,7 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
     expect(backupMetrics.avg).toBeGreaterThanOrEqual(0);
     expect(busyErrorCount).toBe(0);
     expect(otherErrorCount).toBe(0);
-    expect(writeLatencies.length).toBeGreaterThanOrEqual(100);
+    expect(writeLatencies.length).toBeGreaterThanOrEqual(MIN_SAMPLES);
 
     for (const b of backupResults) {
       const integrity = verifyBackupIntegrity(b.backupPath);
@@ -175,6 +181,22 @@ describe("SQLITE BACKUP & DISASTER RECOVERY ADVERSARIAL AUDIT", () => {
     }
 
     expect(writeMetrics.p95).toBeLessThan(50);
+  });
+
+  it("leaves a single self-contained file: no -wal/-shm sidecars beside the snapshot", async () => {
+    const backup = await createBackup({
+      sourceDb: testDb as any,
+      destinationDir: testBackupDir,
+      retentionCount: 5
+    });
+
+    const leftovers = fs.readdirSync(testBackupDir).filter((name) => /-(wal|shm)$/.test(name));
+    expect(leftovers).toEqual([]);
+
+    const bDb = new Database(backup.backupPath, { readonly: true });
+    const mode = bDb.pragma("journal_mode", { simple: true });
+    bDb.close();
+    expect(mode).toBe("delete");
   });
 
   it("executes a full end-to-end disaster recovery restore workflow", async () => {

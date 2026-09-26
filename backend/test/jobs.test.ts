@@ -42,9 +42,15 @@ describe("node-cron swallows async task rejections", () => {
 });
 
 describe("scheduledTask makes a swallowed failure observable", () => {
-  it("counts and attributes a failing run", async () => {
-    const { scheduledTask } = await import("../src/jobs");
+  // src/jobs pulls in every service and the database layer. Cold, that import
+  // alone can pass 5 s on a loaded CI runner, so it is paid once here with its
+  // own budget instead of inside the first test's timeout.
+  let scheduledTask: typeof import("../src/jobs").scheduledTask;
+  beforeAll(async () => {
+    ({ scheduledTask } = await import("../src/jobs"));
+  }, 30_000);
 
+  it("counts and attributes a failing run", async () => {
     const failing = scheduledTask("rss", () => Promise.reject(new Error("db locked")));
     await failing();
 
@@ -55,16 +61,12 @@ describe("scheduledTask makes a swallowed failure observable", () => {
   });
 
   it("does not rethrow, so the scheduler keeps ticking", async () => {
-    const { scheduledTask } = await import("../src/jobs");
-
     const failing = scheduledTask("ai", () => Promise.reject(new Error("boom")));
 
     await expect(failing()).resolves.toBeUndefined();
   });
 
   it("leaves the failure counters alone on a successful run", async () => {
-    const { scheduledTask } = await import("../src/jobs");
-
     await scheduledTask("rss", () => Promise.resolve())();
 
     expect(jobMetrics.job_run_total).toBe(1);

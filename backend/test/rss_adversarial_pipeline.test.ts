@@ -1,4 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// SSRF koruması adları DNS ile çözer. Test gerçek DNS'e çıkarsa sonucu dış kayıtlara ve ağın
+// hızına bağlı kalır (yavaş DNS'li makinede 5 sn sınırı aşılıyordu). Sabit tablo, korumanın
+// mantığını ("özel IP'ye çözülen ad reddedilir, çözülemeyen ad reddedilir") ağdan bağımsız sınar.
+vi.mock("dns", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("dns")>();
+  const table: Record<string, { address: string; family: number }[]> = {
+    "www.reuters.com": [{ address: "104.18.20.1", family: 4 }],
+    "feeds.bbci.co.uk": [{ address: "151.101.0.81", family: 4 }],
+    "www.aljazeera.com": [{ address: "104.18.1.1", family: 4 }],
+    "example.com": [{ address: "93.184.216.34", family: 4 }],
+    "localhost.localdomain": [{ address: "127.0.0.1", family: 4 }],
+    "metadata.google.internal": [{ address: "169.254.169.254", family: 4 }]
+  };
+  const lookup = (host: string, options: unknown, callback?: (...args: unknown[]) => void) => {
+    const done = (typeof options === "function" ? options : callback) as (...args: unknown[]) => void;
+    const records = table[host];
+    if (!records) {
+      done(Object.assign(new Error(`getaddrinfo ENOTFOUND ${host}`), { code: "ENOTFOUND" }));
+      return;
+    }
+    done(null, records);
+  };
+  return { ...actual, default: { ...actual, lookup }, lookup };
+});
 import { isHtmlPayload } from "../src/services/rss.service";
 import { extractGeoFromText } from "../src/lib/geoExtract";
 import { computeReliability } from "../src/services/reliability.service";
