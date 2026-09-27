@@ -609,7 +609,7 @@ ANALİZ & RAPOR                                              ← grup başlıkla
   ▸ Performans
   ▸ Raporlar
 ────────────────────────────────────────────────────────
-[Avatar 32px] Berkay
+[Avatar 32px] Deniz
               Yönetici                            [⌄]
 ```
 
@@ -1075,7 +1075,7 @@ Akış halinde · son 10                    ↑ nokta 6px, success, 2s nabız
 ```
 ┌────┐  Cum, 16 Ağu 2026 · 14:40
 │ 16 │  Ahmet Yılmaz                          ₺560.000
-│Ağu │  Değerleme · 2s 30dk · Berkay ile
+│Ağu │  Değerleme · 2s 30dk · Deniz ile
 └────┘
 ```
 

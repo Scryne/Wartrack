@@ -112,4 +112,4 @@ Haberler ve olaylar gerçek kamuya açık kaynaklardan otomatik toplanmıştır;
 
 ---
 
-MIT Lisansı · © 2026 Berkay Karaca (Scryne)
+MIT Lisansı · © 2026 Scryne
