@@ -4,3 +4,9 @@
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+
+# Security floors for transitive dependencies (pnpm audit, 2026-10-26):
+# express 4.22.3 still pins body-parser 1.20.8; node-cron 3.0.3 pins uuid 8.3.2.
+overrides:
+  body-parser: ^1.20.9
+  uuid: ^11.1.1
