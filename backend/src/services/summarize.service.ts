@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import db from "../db";
 import { getStringSetting } from "./settings.service";
 import { sanitizeAiOutput, validateTurkishOutput } from "../lib/languageGuard";
+import { checkSummaryPlaces, withPlaceGlossary } from "../lib/placeNames";
 
 /* ───────────────── SYSTEM PROMPT ───────────────── */
 
@@ -17,7 +18,7 @@ KURALLAR — İSTİSNASIZ UYGULANACAK:
 5. Haber İran-İsrail çatışmasıyla alakasızsa:
    sadece "Bölgesel çatışmayla doğrudan ilgisi yok." yaz.
 6. Özeti asla "Bu haber..." veya "Makale..." diye başlatma.
-    Doğrudan olayla başla. Örnek: "İsrail hava kuvvetleri..."
+   Doğrudan haberin öznesiyle başla. Haberde olmayan bir özne, yer ya da olay ekleme.
 7. Yalnızca haberde yazanı aktar. Yorum, çıkarım veya değerlendirme
    ("bu durum ... gösteriyor", "... yansıtıyor", "... anlamına geliyor") yasak.`;
 
@@ -36,7 +37,8 @@ const AI_SAFE_MODE = (process.env.AI_SAFE_MODE ?? "1") !== "0";
 const aiMetrics = {
   ai_lang_validation_fail_total: 0,
   ai_lang_retry_total: 0,
-  ai_lang_fallback_total: 0
+  ai_lang_fallback_total: 0,
+  ai_place_check_fail_total: 0
 };
 
 const VALIDATION_LOG_COOLDOWN_MS = 60_000;
@@ -320,13 +322,32 @@ function validateSummary(summary: string, provider: "ollama" | "gemini", strictA
   return false;
 }
 
+/**
+ * A summary that names a different place than the story ("Humus Boğazı" for
+ * Hormuz) passes the language guard; this rejects it so the strict retry runs.
+ */
+async function placesMatchSource(text: string, summary: string, provider: "ollama" | "gemini"): Promise<boolean> {
+  const check = await checkSummaryPlaces(text, summary);
+  if (check.ok) return true;
+  aiMetrics.ai_place_check_fail_total += 1;
+  console.warn("[AI] Yer adı denetimi başarısız", { provider, p: check.p, summary: summary.slice(0, 160) });
+  return false;
+}
+
 async function summarizeWithProvider(provider: "ollama" | "gemini", text: string): Promise<string | null> {
-  const initial = provider === "ollama" ? await ollamaSummarize(text, false) : await geminiSummarizeWithMode(text, false);
-  if (initial && validateSummary(initial, provider, false)) return initial;
+  // The model gets the Turkish names of the places the story mentions; the
+  // place check still compares against the original text.
+  const prompted = withPlaceGlossary(text);
+  const initial = provider === "ollama" ? await ollamaSummarize(prompted, false) : await geminiSummarizeWithMode(prompted, false);
+  if (initial && validateSummary(initial, provider, false) && (await placesMatchSource(text, initial, provider))) {
+    return initial;
+  }
 
   aiMetrics.ai_lang_retry_total += 1;
-  const retry = provider === "ollama" ? await ollamaSummarize(text, true) : await geminiSummarizeWithMode(text, true);
-  if (retry && validateSummary(retry, provider, true)) return retry;
+  const retry = provider === "ollama" ? await ollamaSummarize(prompted, true) : await geminiSummarizeWithMode(prompted, true);
+  if (retry && validateSummary(retry, provider, true) && (await placesMatchSource(text, retry, provider))) {
+    return retry;
+  }
   return null;
 }
 

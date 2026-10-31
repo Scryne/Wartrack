@@ -38,12 +38,24 @@ Arayüz: emoji ikonlar lucide'e, ham renkler token'a taşındı; `--accent` hiç
 düğmesi görünmüyordu); ayarlar erişilebilir diyalog oldu; boş/hata durumları ayrıldı; mobil düzen
 kaydırılabilir hale geldi. Kayıt: [`design/decisions.md`](design/decisions.md).
 
+## 2026-10-31: konu süzgeci ve yer adları
+
+- **Konu süzgeci:** bölgeye yerleşen her habere TypeSafe ile "çatışma/güvenlik mi" sorulur (eşik 0,35). 83 + 50
+  bağımsız haberde 0 yanlış kabul, 1 kaçırma; canlı veride 192 bölge haberinin 105'i konu dışı çıktı, onlardan
+  çıkmış 15 olay kaldırıldı. Ayrıntı: [`docs/konu-suzgeci.md`](docs/konu-suzgeci.md).
+- **Gazetteer:** kelime sınırıyla eşleşir (Tirana artık İran değil, woman Oman değil), "strait" her boğazı Hürmüz'e
+  koymaz, şehir ülkeden önce gelir; Batı Şeria, Yemen, Körfez, Irak yerleri eklendi.
+- **Yer adları:** özetleyiciye haberdeki yerlerin Türkçe yazımı verilir, özet TypeSafe ile kaynağa karşı denetlenir.
+  Sözlüksüz 60 özette 11 şüpheli (Humus, Tahir, Mekke…), sözlükle 4, kaba yer hatası 0. Ayrıntı:
+  [`docs/yer-adi-denetimi.md`](docs/yer-adi-denetimi.md).
+- Testler: backend 257.
+
 ## Bilinen sınırlar
 
-- **Bölge süzgeci coğrafidir, konu değildir.** İsrail'de geçen bir müzikal eleştirisi "bölge" sayılır.
-  Konu ilgisi anlamsal bir sınıflandırma ister (aday: TypeSafe); şimdilik yok.
-- **4B yerel model** ara sıra yer adını çevirirken hata yapar ("Hürmüz" yerine "Humus"). Dil
-  denetimi yabancı sözcükleri yakalar, anlam hatasını yakalamaz. Kaynağı panelde yazılıdır.
+- **Konu süzgeci anahtar ister** (`TYPESAFE_API_KEY`, yalnız arka uçta). Yoksa uygulama eski davranışa döner:
+  bölgeye yerleşen her haber bölge sayılır.
+- **4B yerel model** yer adlarını artık sözlükle yazıyor, ama habere zaman zaman küçük ayrıntılar ekleyebiliyor;
+  denetim yalnız yerleri sorar. Kaynağı panelde yazılıdır.
 - **Canlı yayın kimlikleri eskir.** Al Jazeera EN ve DW kanal bazlı gömme ile kendini günceller;
   diğerleri sabit kimliktir, "YouTube'da aç" bağlantısı her zaman kanalın canlı sayfasına gider.
 - **Tek operatör, tek düğüm.** SQLite (WAL) tek yazıcıdır; çok kullanıcılı kurulum için tasarlanmadı.

@@ -1,6 +1,5 @@
-import dns from "dns";
-import { Agent, fetch as undiciFetch } from "undici";
-import { NotFoundError, noul, TypeSafeClient } from "@typesafe-ai/sdk";
+import { NotFoundError, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
+import { getTypeSafeClient, isRetiredModelError } from "../lib/typesafe";
 import db from "../db";
 
 /**
@@ -53,21 +52,10 @@ export interface Classifier {
   classify(story: StoryForRelevance): Promise<{ score: number; model: string }>;
 }
 
-// This network's resolver stalls ~12 s on AAAA queries for names without an
-// IPv6 record (api.typesafe.ai is one). IPv4-only lookup avoids that stall.
-const ipv4Agent = new Agent({
-  connect: {
-    lookup: (hostname, options, callback) => dns.lookup(hostname, { ...options, family: 4 }, callback)
-  }
-});
-
-function ipv4Fetch(input: string, init?: RequestInit): Promise<Response> {
-  return undiciFetch(input, { ...(init as object), dispatcher: ipv4Agent }) as unknown as Promise<Response>;
-}
-
 class TypeSafeClassifier implements Classifier {
-  private client = new TypeSafeClient({ fetch: ipv4Fetch, timeout: 15_000 });
   private model = THEATRE_MODEL;
+
+  constructor(private client: TypeSafeClient) {}
 
   async classify(story: StoryForRelevance): Promise<{ score: number; model: string }> {
     const state = { source: story.source, title: story.title, description: story.description ?? "" };
@@ -78,7 +66,7 @@ class TypeSafeClassifier implements Classifier {
       // Pinned Jev versions are retired without notice. Fall back to the
       // current model rather than silently stop classifying; the row records
       // which model answered.
-      if (err instanceof NotFoundError || /unknown model/i.test(String(err))) {
+      if (err instanceof NotFoundError || isRetiredModelError(err)) {
         if (this.model !== "jev-latest") {
           console.warn(`[RELEVANCE] ${this.model} kalkmış; jev-latest'e geçiliyor (eşik ${THEATRE_MODEL} ile ölçüldü).`);
           this.model = "jev-latest";
@@ -95,8 +83,8 @@ let classifier: Classifier | null | undefined;
 /** The configured classifier, or null when relevance classification is off. */
 export function getClassifier(): Classifier | null {
   if (classifier !== undefined) return classifier;
-  classifier =
-    process.env.THEATRE_CLASSIFIER === "0" || !process.env.TYPESAFE_API_KEY ? null : new TypeSafeClassifier();
+  const client = process.env.THEATRE_CLASSIFIER === "0" ? null : getTypeSafeClient();
+  classifier = client ? new TypeSafeClassifier(client) : null;
   return classifier;
 }
 
