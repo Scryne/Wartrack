@@ -359,6 +359,22 @@ const MIGRATIONS: Migration[] = [
          )
       `);
     }
+  },
+
+  {
+    version: 8,
+    name: "article_theatre_relevance",
+    up: (database) => {
+      // The gazetteer answers "where", not "what": a musical review set in Tel
+      // Aviv was a theatre story. theatreScore is the probability that the story
+      // is about the conflict and security situation (relevance.service.ts);
+      // NULL means not classified yet, and is treated as relevant so the feed
+      // degrades to the gazetteer-only behaviour without a classifier.
+      database.exec(`
+        ALTER TABLE articles ADD COLUMN theatreScore REAL;
+        ALTER TABLE articles ADD COLUMN theatreModel TEXT;
+      `);
+    }
   }
 ];
 

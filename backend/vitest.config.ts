@@ -20,7 +20,11 @@ export default defineConfig({
       // Tests must never reach a real model: a developer running Ollama would
       // otherwise make the suite slow and its results depend on model output.
       OLLAMA_URL: "http://127.0.0.1:9",
-      GEMINI_API_KEY: ""
+      GEMINI_API_KEY: "",
+      // Same for the topic classifier: no network, no key from the developer's
+      // environment (relevance tests inject a fake with setClassifier).
+      TYPESAFE_API_KEY: "",
+      THEATRE_CLASSIFIER: "0"
     }
   }
 });

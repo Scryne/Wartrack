@@ -30,7 +30,6 @@ const GEO_MAP: Record<string, [number, number]> = {
   houthi: [15.3694, 44.191],
   'red sea': [20.0, 38.0],
   kizildeniz: [20.0, 38.0],
-  strait: [26.5, 56.25],
   hormuz: [26.5, 56.25],
   gulf: [26.0, 50.55],
   saudi: [23.8859, 45.0792],
@@ -50,12 +49,59 @@ const GEO_MAP: Record<string, [number, number]> = {
   latakia: [35.5317, 35.7909],
   eilat: [29.5581, 34.9482],
   ashdod: [31.8044, 34.6553],
+  hebron: [31.5326, 35.0998],
+  jenin: [32.4597, 35.3009],
+  nablus: [32.2211, 35.2544],
+  ramallah: [31.9038, 35.2034],
+  bethlehem: [31.7054, 35.2024],
+  tulkarm: [32.3104, 35.0286],
+  'khan younis': [31.3462, 34.3063],
+  hamas: [31.5, 34.4667],
+  hezbollah: [33.2721, 35.2033],
+  sidon: [33.5571, 35.3729],
+  aleppo: [36.2021, 37.1343],
+  homs: [34.7324, 36.7137],
+  idlib: [35.9306, 36.6339],
+  mosul: [36.34, 43.13],
+  erbil: [36.1911, 44.0092],
+  kirkuk: [35.4681, 44.3922],
+  basra: [30.5085, 47.7804],
+  aden: [12.7855, 45.0187],
+  hodeidah: [14.7978, 42.9545],
+  marib: [15.4543, 45.3263],
+  bahrain: [26.0667, 50.5577],
+  kuwait: [29.3759, 47.9774],
+  uae: [24.4539, 54.3773],
+  emirates: [24.4539, 54.3773],
+  'abu dhabi': [24.4539, 54.3773],
+  dubai: [25.2048, 55.2708],
+  oman: [21.4735, 55.9754],
+  muscat: [23.588, 58.3829],
+  qom: [34.6416, 50.8746],
+  kermanshah: [34.3142, 47.065],
+  ahvaz: [31.3183, 48.6706],
+  'bandar abbas': [27.1832, 56.2666],
+  chabahar: [25.2919, 60.643],
+  'sistan': [29.4963, 60.8629],
+  baluch: [29.4963, 60.8629],
   dimona: [31.0700, 35.0300]
 };
 
-// Longest key first, so "tel aviv" wins over "israel" and "red sea" over "gulf".
-// Sorted once at module load rather than on every call.
-const GEO_ENTRIES = Object.entries(GEO_MAP).sort((a, b) => b[0].length - a[0].length);
+// Country and actor names are the coarsest answer; a story naming a city is
+// placed at the city ("Israeli assault displaces thousands in Hebron").
+const COARSE_KEYS = new Set([
+  "israel", "iran", "lebanon", "syria", "jordan", "iraq", "yemen", "saudi", "qatar", "turkey",
+  "egypt", "cyprus", "pakistan", "bahrain", "kuwait", "uae", "emirates", "oman",
+  "hamas", "hezbollah", "houthi", "baluch", "gulf"
+]);
+
+// Specific places before coarse ones, then longest key first, so "tel aviv"
+// wins over "israel" and "red sea" over "gulf". Each key must start at a word
+// boundary: a bare substring test placed "Tirana" in Iran and "woman" in Oman.
+// Suffixes stay allowed (Iranian, Israeli, Yemeni). Compiled once at load.
+const GEO_ENTRIES: [RegExp, [number, number]][] = Object.entries(GEO_MAP)
+  .sort((a, b) => Number(COARSE_KEYS.has(a[0])) - Number(COARSE_KEYS.has(b[0])) || b[0].length - a[0].length)
+  .map(([key, coords]) => [new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"), coords]);
 
 /**
  * Resolve a place name in `text` to its gazetteer coordinate.
@@ -64,11 +110,13 @@ const GEO_ENTRIES = Object.entries(GEO_MAP).sort((a, b) => b[0].length - a[0].le
  * displaced pins by up to ~66km, made ingestion non-deterministic, and was
  * compounded by a second randomisation pass in rss.service. Visual de-overlap
  * belongs in the map layer, not in the stored record.
+ *
+ * "Where" only: whether the story is about the conflict is decided separately
+ * (services/relevance.service.ts).
  */
 export function extractGeoFromText(text: string): [number, number] | null {
-  const lower = text.toLowerCase();
-  for (const [key, coords] of GEO_ENTRIES) {
-    if (lower.includes(key)) {
+  for (const [pattern, coords] of GEO_ENTRIES) {
+    if (pattern.test(text)) {
       return [coords[0], coords[1]];
     }
   }

@@ -7,6 +7,7 @@ import { rateLimit } from '../lib/rateLimit';
 import { QueryParamError, optionalInt, optionalString } from '../lib/queryParams';
 import { asyncRoute } from '../lib/http';
 import { jobMetrics } from '../lib/jobMetrics';
+import { THEATRE_SQL } from "../services/relevance.service";
 
 const router = Router();
 
@@ -59,7 +60,7 @@ router.get('/map-pins', (_req, res) => {
       .prepare(
         `SELECT id, title, source, pubDate, lat, lng, aiSummary, category, link
          FROM articles
-         WHERE lat IS NOT NULL AND lng IS NOT NULL
+         WHERE ${THEATRE_SQL}
          ORDER BY pubDate DESC
          LIMIT 30`
       )

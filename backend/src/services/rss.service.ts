@@ -6,6 +6,7 @@ import { validateTurkishOutput } from '../lib/languageGuard';
 import { sqliteIsoNow, toIsoOrNull } from '../lib/time';
 import { validateUrlShape } from '../lib/ssrfGuard';
 import { CONNECT_TIMEOUT_MS, safeFetch } from '../lib/safeFetch';
+import { THEATRE_SQL } from "./relevance.service";
 
 export interface RssSource {
   name: string;
@@ -443,7 +444,7 @@ export function getArticles(opts: GetArticlesOpts = {}) {
     params.source = opts.source;
   }
   if (opts.scope === 'theatre') {
-    conditions.push('lat IS NOT NULL AND lng IS NOT NULL');
+    conditions.push(THEATRE_SQL);
   }
   if (opts.search) {
     // Escape LIKE's own wildcards. Without this, searching for "100%" matched

@@ -4,6 +4,7 @@ import { fetchAllFeeds } from "../services/rss.service";
 import { runSummarizeJob } from "./summarize.job";
 import { clearInvalidSummaries } from "../services/summarize.service";
 import { autoExtractEvents } from "../routes/events";
+import { classifyPendingArticles } from "../services/relevance.service";
 import { getNumberSetting } from "../services/settings.service";
 import { jobMetrics, recordJobFailure } from "../lib/jobMetrics";
 import { createBackup } from "../services/backup.service";
@@ -70,6 +71,18 @@ async function runRssCycle(io: SocketIOServer): Promise<void> {
       sources: result.sourcesScanned
     });
     io.emit("stats:update");
+
+    // Topic relevance before event extraction, so an off-topic story placed in
+    // the theatre by the gazetteer never becomes an event. A classifier outage
+    // must not stop ingestion: unclassified rows count as relevant and retry.
+    try {
+      const relevance = await classifyPendingArticles();
+      if (relevance.classified > 0) {
+        console.info(`[RELEVANCE] ${relevance.classified} haber sınıflandı, ${relevance.offTopic} konu dışı, ${relevance.removedEvents} olay kaldırıldı.`);
+      }
+    } catch (err) {
+      console.error("[RELEVANCE] Sınıflama turu başarısız:", err);
+    }
 
     autoExtractEvents(io);
   } catch (err) {

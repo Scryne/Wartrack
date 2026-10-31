@@ -1,0 +1,608 @@
+{
+ "model": "jev-1.14.0",
+ "tarih": "2026-10-31",
+ "esik": 0.35,
+ "not": "etiket: 1 = çatışma/güvenlik, 0 = değil, null = belirsiz (isabete katılmadı). Set 1 soru tasarımında kullanıldı, set 2 sonradan çekildi ve sonuca bakılmadan etiketlendi.",
+ "set1": [
+  {
+   "title": "Sri Lanka rescues 40 Iranian sailors from stranded ships",
+   "source": "Iran Int'l",
+   "etiket": null,
+   "p": 0.02
+  },
+  {
+   "title": "Saudi Arabia looks to US for an AI edge as Yemen's Houthis up pressure",
+   "source": "DW World",
+   "etiket": 1,
+   "p": 0.89
+  },
+  {
+   "title": "US says it can sustain Iran blockade for ‘foreseeable future’",
+   "source": "Iran Int'l",
+   "etiket": 1,
+   "p": 0.91
+  },
+  {
+   "title": "'Missiles from Iran': Facebook, TikTok and Instagram feed us scary news from the past",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.2
+  },
+  {
+   "title": "‘Enough is enough’: Palestinians and Israelis share views ahead of election",
+   "source": "Al Jazeera",
+   "etiket": 0,
+   "p": 0.1
+  },
+  {
+   "title": "What does the Israeli election mean for religious groups?",
+   "source": "Al Jazeera",
+   "etiket": 0,
+   "p": 0.07
+  },
+  {
+   "title": "‘We left with heavy hearts’: Israel’s assault displaces thousands in Hebron",
+   "source": "Middle East Eye",
+   "etiket": 1,
+   "p": 0.98
+  },
+  {
+   "title": "Netanyahu reportedly pressured military to attack Iran in runup to election",
+   "source": "Guardian World",
+   "etiket": 1,
+   "p": 0.57
+  },
+  {
+   "title": "Baluch insurgency tests the limits of a war-weakened Islamic Republic",
+   "source": "Iran Int'l",
+   "etiket": 1,
+   "p": 0.96
+  },
+  {
+   "title": "In East Jerusalem, Palestinians have no vote in Israel's election, but plenty at stake",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.08
+  },
+  {
+   "title": "‘Everything destroyed’: Hebron businesses count cost of Israeli assault",
+   "source": "Al Jazeera",
+   "etiket": 1,
+   "p": 0.94
+  },
+  {
+   "title": "Three drones intercepted over Riyadh, southern Saudi Arabia, Saudi-led coalition says",
+   "source": "Middle East Eye",
+   "etiket": 1,
+   "p": 0.98
+  },
+  {
+   "title": "Final Israel election polls put Eisenkot's Yashar ahead of Likud, but neither bloc wins a majority",
+   "source": "Ynetnews",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "Israel and the US are both going to the polls - the consequences will be global",
+   "source": "BBC World",
+   "etiket": 0,
+   "p": 0.08
+  },
+  {
+   "title": "Israelis have changed. Will they change their leadership?",
+   "source": "NPR World",
+   "etiket": 0,
+   "p": 0.17
+  },
+  {
+   "title": "US blockade leaves Iran with millions of tons of surplus LPG",
+   "source": "Iran Int'l",
+   "etiket": 1,
+   "p": 0.75
+  },
+  {
+   "title": "Iran’s trade squeeze spreads from sea to land",
+   "source": "Iran Int'l",
+   "etiket": null,
+   "p": 0.48
+  },
+  {
+   "title": "Egyptian parliament authorises military aid for Saudi Arabia",
+   "source": "Al Jazeera",
+   "etiket": 1,
+   "p": 0.95
+  },
+  {
+   "title": "Lebanon's Mossad hysteria: Palestinians with Israeli phone country code spark fear in Beirut",
+   "source": "Jerusalem Post",
+   "etiket": null,
+   "p": 0.49
+  },
+  {
+   "title": "European gas prices soar to four-year high over winter supply fears",
+   "source": "Guardian World",
+   "etiket": null,
+   "p": 0.19
+  },
+  {
+   "title": "Providence is poised to become the largest U.S. city to divest from Israel. What happens next?",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.06
+  },
+  {
+   "title": "China values Iran but won't pay any price to defend it",
+   "source": "Iran Int'l",
+   "etiket": 1,
+   "p": 0.54
+  },
+  {
+   "title": "Jerusalem Daily: Last minute efforts by Israeli politicians before election",
+   "source": "Al Jazeera",
+   "etiket": 0,
+   "p": 0.06
+  },
+  {
+   "title": "Saudi Arabia, Turkey and Pakistan hold de-escalation talks with Iran amid regional tensions",
+   "source": "Haaretz EN",
+   "etiket": 1,
+   "p": 0.98
+  },
+  {
+   "title": "Israeli candidate Eisenkot pledges to unite country as Netanyahu deems him 'soft' on Iran",
+   "source": "France24 EN",
+   "etiket": null,
+   "p": 0.07
+  },
+  {
+   "title": "‘Feels like New York after COVID’: Tel Aviv residents alarmed by street disorder",
+   "source": "Ynetnews",
+   "etiket": 0,
+   "p": 0.03
+  },
+  {
+   "title": "A new Israeli government must make Arabs partners, not enemies",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.16
+  },
+  {
+   "title": "Trump renews Netanyahu endorsement, urges Israelis to reelect him",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.23
+  },
+  {
+   "title": "The Mecca Pact and Pakistan’s Bid to Become Indispensable",
+   "source": "War on the Rocks",
+   "etiket": 1,
+   "p": 0.52
+  },
+  {
+   "title": "Jewish history carries a warning for Brazil's presidential election",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.04
+  },
+  {
+   "title": "Egypt's parliament approves military assistance for Saudi Arabia against Houthis",
+   "source": "Haaretz EN",
+   "etiket": 1,
+   "p": 0.97
+  },
+  {
+   "title": "IDF brass fears Netanyahu may launch Iran offensive before Tuesday's election",
+   "source": "Haaretz EN",
+   "etiket": 1,
+   "p": 0.84
+  },
+  {
+   "title": "No. 3: Gadi Eisenkot: Israel’s next prime minister?",
+   "source": "Jerusalem Post",
+   "etiket": 0,
+   "p": 0.06
+  },
+  {
+   "title": "Iran Faces Severe Challenges to Rebuild Missile and Drone Production",
+   "source": "War on the Rocks",
+   "etiket": 1,
+   "p": 0.96
+  },
+  {
+   "title": "Trump threatens new Iran strike: ‘We may do another little Epic Fury, or they'll agree’",
+   "source": "Ynetnews",
+   "etiket": 1,
+   "p": 0.95
+  },
+  {
+   "title": "Delegations arrive in Tehran for security talks",
+   "source": "Al Jazeera",
+   "etiket": 1,
+   "p": 0.89
+  },
+  {
+   "title": "Forget war with Iran, is Netanyahu going to try to pull a January 6 after Israel's election?",
+   "source": "Haaretz EN",
+   "etiket": null,
+   "p": 0.22
+  },
+  {
+   "title": "US midterms: Obama blasts Trump's 'chaos and cruelty' while campaigning for Democrats",
+   "source": "France24 EN",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "Bessent says Iran economy will contract by more than 25%",
+   "source": "Iran Int'l",
+   "etiket": null,
+   "p": 0.2
+  },
+  {
+   "title": "Shin Bet-directed private security to protect Golan, Winter ahead of election",
+   "source": "Haaretz EN",
+   "etiket": null,
+   "p": 0.2
+  },
+  {
+   "title": "Will Netanyahu's security promise win him this election?",
+   "source": "France24 EN",
+   "etiket": 0,
+   "p": 0.19
+  },
+  {
+   "title": "What it's like to be Palestine's 17-year-old chess champion",
+   "source": "Middle East Eye",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "Opponents accuse Netanyahu of stoking tensions with Iran before Israel's election",
+   "source": "France24 EN",
+   "etiket": 1,
+   "p": 0.35
+  },
+  {
+   "title": "'Very anxious and very nervous': Israel on election eve, in a race full of wild cards",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.07
+  },
+  {
+   "title": "Netanyahu’s Iranian supporters pin hopes for change on his re-election",
+   "source": "Iran Int'l",
+   "etiket": 0,
+   "p": 0.14
+  },
+  {
+   "title": "Mossad officials opposed Netanyahu's push for pre-election Iran operation backed by spy agency chief",
+   "source": "Haaretz EN",
+   "etiket": 1,
+   "p": 0.75
+  },
+  {
+   "title": "Israeli-born oligarch behind Russia's $14 billion sanctions-evading cash network linked to Iran, Hamas",
+   "source": "Ynetnews",
+   "etiket": null,
+   "p": 0.06
+  },
+  {
+   "title": "‘It’s collective punishment’: nearly 2,000 Palestinians in Hebron displaced as Israeli forces take over homes",
+   "source": "Guardian World",
+   "etiket": 1,
+   "p": 0.9
+  },
+  {
+   "title": "Israeli arrested in Thailand suspected of drugging women he met on dating app",
+   "source": "Ynetnews",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "US strikes on Iran now serve the blockade",
+   "source": "Iran Int'l",
+   "etiket": 1,
+   "p": 0.96
+  },
+  {
+   "title": "Ground Robots Are Arriving on the Front Lines",
+   "source": "War on the Rocks",
+   "etiket": 0,
+   "p": 0.03
+  },
+  {
+   "title": "Hezbollah is readying to renew war with Israel with funds from Iran, Lebanese sources say",
+   "source": "Haaretz EN",
+   "etiket": 1,
+   "p": 0.99
+  },
+  {
+   "title": "Israel committing crimes against humanity in occupied West Bank: UN",
+   "source": "Al Jazeera",
+   "etiket": 1,
+   "p": 0.78
+  },
+  {
+   "title": "Netanyahu: rejecting peace since 1999",
+   "source": "Haaretz EN",
+   "etiket": null,
+   "p": 0.77
+  },
+  {
+   "title": "US quietly moves diplomats and families across Middle East as fears of wider war grow",
+   "source": "Ynetnews",
+   "etiket": 1,
+   "p": 0.64
+  },
+  {
+   "title": "Mecca alliance visits Tehran in push to end Israeli-US war and build regional security",
+   "source": "Middle East Eye",
+   "etiket": 1,
+   "p": 0.97
+  },
+  {
+   "title": "Iran plot suspect says he was told to break journalist’s arms and legs",
+   "source": "Iran Int'l",
+   "etiket": null,
+   "p": 0.13
+  },
+  {
+   "title": "Qatar pushes for Iran deal, new US strikes remain possible",
+   "source": "Iran Int'l",
+   "etiket": 1,
+   "p": 0.97
+  },
+  {
+   "title": "Iran's jailed twin sisters shortlisted for EU's Sakharov Prize",
+   "source": "Iran Int'l",
+   "etiket": 0,
+   "p": 0.07
+  },
+  {
+   "title": "Israel bars United Airlines pilot over alleged Iran links - Ynet",
+   "source": "Iran Int'l",
+   "etiket": null,
+   "p": 0.17
+  },
+  {
+   "title": "Israel’s leaders have long wanted Iran’s rulers gone. They differ only on how",
+   "source": "Iran Int'l",
+   "etiket": 1,
+   "p": 0.49
+  },
+  {
+   "title": "Oil price surge fuels Iran hardliners’ case against US deal",
+   "source": "Iran Int'l",
+   "etiket": null,
+   "p": 0.53
+  },
+  {
+   "title": "The campaign ends with Iran, and the question of trust - analysis",
+   "source": "Jerusalem Post",
+   "etiket": null,
+   "p": 0.18
+  },
+  {
+   "title": "Key Israeli health committee faces tough choices as funding increase stays flat for fourth year",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "UK antisemitism watchdog GnasherJew exposes 40 antisemitic healthcare workers in NHS",
+   "source": "Jerusalem Post",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "Could the midterms change US military support for Israel?",
+   "source": "Al Jazeera",
+   "etiket": null,
+   "p": 0.28
+  },
+  {
+   "title": "Iraq orders arrest of provincial leader amid tensions over Iran ties",
+   "source": "Iran Int'l",
+   "etiket": null,
+   "p": 0.46
+  },
+  {
+   "title": "No. 4: Naftali Bennett: The former PM seeking a comeback to ‘repair Israel’",
+   "source": "Jerusalem Post",
+   "etiket": 0,
+   "p": 0.08
+  },
+  {
+   "title": "How is the Muslim world reporting on Israel’s election?",
+   "source": "Jerusalem Post",
+   "etiket": 0,
+   "p": 0.05
+  },
+  {
+   "title": "Tehran is a Different Beast Now",
+   "source": "War on the Rocks",
+   "etiket": null,
+   "p": 0.85
+  },
+  {
+   "title": "Rated Ready is Not Ready: What America’s Korea Exercises Actually Measure",
+   "source": "War on the Rocks",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "Australians should prepare for online services to go down unexpectedly as threats rise, cyber agency warns",
+   "source": "Guardian World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "Army converts Futures and Concepts Command to Futures and Autonomy Command",
+   "source": "Defense One",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "France protests: Macron rules out state of emergency – for now",
+   "source": "France24 EN",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "UK poised to miss reduced aid spending target of 0.3% of national income",
+   "source": "Guardian World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "My 85-year-old father voted for Netanyahu for over 20 years. I convinced him to switch sides",
+   "source": "Haaretz EN",
+   "etiket": 0,
+   "p": 0.06
+  },
+  {
+   "title": "Photos of the week",
+   "source": "CBS News World",
+   "etiket": 0,
+   "p": 0.06
+  },
+  {
+   "title": "Algeria to send troops to Niger in first foreign deployment since 1973",
+   "source": "BBC World",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "In Bulgaria, record low voter turnout triggers a November 1 presidential run-off in a poll colored by divisions over Ukraine war",
+   "source": "DW World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "Fifteen-year-old arrested in shooting near Florida university that injured 12",
+   "source": "Guardian World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "How 'Lula's Army' WhatsApp channel helped turn Brazil election around",
+   "source": "BBC World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "Fighting in Ethiopia and the Risk of Regional Spillover",
+   "source": "War on the Rocks",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "No. 5: Ronald Lauder: Standing at the forefront of the fight against antisemitism",
+   "source": "Jerusalem Post",
+   "etiket": 0,
+   "p": 0.05
+  },
+  {
+   "title": "Sydney's new $5bn airport has one big problem: Getting there is tough",
+   "source": "BBC World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "Why Ukraine may be involved in Mali's conflict",
+   "source": "DW World",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "Cyber Operators Are Deployed in Place. The Pentagon Should Treat Them That Way",
+   "source": "War on the Rocks",
+   "etiket": 0,
+   "p": 0.03
+  },
+  {
+   "title": "10/25: CBS Weekend News",
+   "source": "CBS News World",
+   "etiket": 0,
+   "p": 0.03
+  },
+  {
+   "title": "Military power rising as power of diplomacy falling, diplomats, crisis monitors, allies say",
+   "source": "Defense One",
+   "etiket": 0,
+   "p": 0.16
+  },
+  {
+   "title": "Kim Jong Un visits China to open new bridge, reaffirm ties",
+   "source": "CBS News World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "Reading Pyongyang Through the Cracks of the International System",
+   "source": "War on the Rocks",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "Hebron business demolitions carried out without prior hearing, state tells High Court",
+   "source": "Jerusalem Post",
+   "etiket": 1,
+   "p": 0.93
+  },
+  {
+   "title": "'Lack of Jews hasn't meant lack of antisemitism,' Expert on Jews in Wales tells 'Post' - interview",
+   "source": "Jerusalem Post",
+   "etiket": 0,
+   "p": 0.05
+  },
+  {
+   "title": "How Sudan Became a Laboratory for Drone Warfare, Thanks to Abu Dhabi",
+   "source": "War on the Rocks",
+   "etiket": 0,
+   "p": 0.08
+  },
+  {
+   "title": "Japanese prosecutors charge US marine suspected of robbing and killing woman",
+   "source": "Guardian World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "The AI-Assisted Strategic Own Goal in the Kill Chain",
+   "source": "War on the Rocks",
+   "etiket": 0,
+   "p": 0.07
+  },
+  {
+   "title": "Marines fielding new tech for prolonged medical care on the battlefield",
+   "source": "Defense One",
+   "etiket": 0,
+   "p": 0.03
+  },
+  {
+   "title": "Steggall and Ryan accuse Taylor of not ’reading the room’ with ’tone deaf’ Haines tribute speech – as it happened",
+   "source": "Guardian World",
+   "etiket": 0,
+   "p": 0.02
+  },
+  {
+   "title": "Exclusive: UK leans towards backing UAE's Lana Nusseibeh for UN secretary-general",
+   "source": "Middle East Eye",
+   "etiket": 0,
+   "p": 0.03
+  },
+  {
+   "title": "Venezuelan opposition leader Machado returns from exile",
+   "source": "DW World",
+   "etiket": 0,
+   "p": 0.01
+  },
+  {
+   "title": "Submarine Affair: Communications adviser Tzahi Liber convicted of brokering bribes",
+   "source": "Jerusalem Post",
+   "etiket": 0,
+   "p": 0.05
+  }
+ ]
+}

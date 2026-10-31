@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import db from "../db";
 import { sqliteIsoNow } from "../lib/time";
+import { THEATRE_SQL } from "../services/relevance.service";
 import { QueryParamError, optionalInt, optionalString } from "../lib/queryParams";
 
 const router = Router();
@@ -268,7 +269,7 @@ export function autoExtractEvents(io?: { emit: (ev: string, data?: unknown) => v
       -- Only stories placed in the theatre become events. Keyword severity on
       -- world feeds turned "hits back at Trump attack" (a museum dispute in
       -- Washington) into a regional conflict event.
-      AND lat IS NOT NULL AND lng IS NOT NULL
+      AND ${THEATRE_SQL}
       AND NOT EXISTS (
         SELECT 1 FROM events e WHERE e.articleId = articles.id
       )

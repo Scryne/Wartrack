@@ -7,6 +7,7 @@ import { rateLimit } from "../lib/rateLimit";
 import { requireApiKey } from "../lib/auth";
 import { asyncRoute } from "../lib/http";
 import { computeExplainableThreat } from "../services/threat.service";
+import { THEATRE_SQL } from "../services/relevance.service";
 
 const briefRouter = Router();
 
@@ -30,7 +31,7 @@ const getRecentArticlesStmt = db.prepare(`
   SELECT id, title, description, source, pubDate, aiSummary
   FROM articles
   WHERE pubDate > ${sqliteIsoNow("-6 hours")}
-    AND lat IS NOT NULL AND lng IS NOT NULL
+    AND ${THEATRE_SQL}
   ORDER BY pubDate DESC
   LIMIT 80
 `);
