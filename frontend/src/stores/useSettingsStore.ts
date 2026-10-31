@@ -5,13 +5,18 @@ import { apiFetch } from '../lib/api';
 const RSS_INTERVALS = [5, 10, 15, 30] as const;
 type RssInterval = (typeof RSS_INTERVALS)[number];
 
+/** Settings tabs that another surface may open the dialog on. */
+export type SettingsTab = 'general' | 'intelligence' | 'security' | 'diagnostics';
+
 interface SettingsState {
   open: boolean;
+  /** Tab to show when the dialog opens; the key prompt opens it on "security". */
+  openTab: SettingsTab;
   rssInterval: RssInterval;
   autoSummarize: boolean;
   aiModel: 'ollama' | 'gemini';
   threatSound: boolean;
-  setOpen: (v: boolean) => void;
+  setOpen: (v: boolean, tab?: SettingsTab) => void;
   update: (partial: Partial<SettingsState>) => void;
   /** Pull server state into the store. */
   hydrate: () => Promise<void>;
@@ -59,11 +64,12 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       open: false,
+      openTab: 'general',
       rssInterval: 5,
       autoSummarize: true,
       aiModel: 'ollama',
       threatSound: false,
-      setOpen: (open) => set({ open }),
+      setOpen: (open, tab = 'general') => set(open ? { open, openTab: tab } : { open }),
       update: (partial) => set(partial),
 
       // Without this the store was a second, never-reconciled source of truth:

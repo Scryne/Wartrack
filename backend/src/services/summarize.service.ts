@@ -3,6 +3,7 @@ import db from "../db";
 import { getStringSetting } from "./settings.service";
 import { sanitizeAiOutput, validateTurkishOutput } from "../lib/languageGuard";
 import { checkSummaryPlaces, withPlaceGlossary } from "../lib/placeNames";
+import { THEATRE_SQL } from "./relevance.service";
 
 /* ───────────────── SYSTEM PROMPT ───────────────── */
 
@@ -21,6 +22,16 @@ KURALLAR — İSTİSNASIZ UYGULANACAK:
    Doğrudan haberin öznesiyle başla. Haberde olmayan bir özne, yer ya da olay ekleme.
 7. Yalnızca haberde yazanı aktar. Yorum, çıkarım veya değerlendirme
    ("bu durum ... gösteriyor", "... yansıtıyor", "... anlamına geliyor") yasak.`;
+
+/** The prompt's fixed answer for stories outside the theatre; not a summary. */
+export const OFF_TOPIC_SUMMARY = "Bölgesel çatışmayla doğrudan ilgisi yok.";
+
+/**
+ * Rule 2 and 6 forbid talking about the text instead of the event; the 4B model
+ * still wrote "Bu metin, politik yorumlar, müzik ... konu almaktadır" into the
+ * ticker. Such an answer is rejected like a language-guard failure.
+ */
+const META_SUMMARY = /^\s*(bu (metin|haber|makale|yazı|içerik)|makale|haberde)(?![\p{L}])/iu;
 
 const STRICT_RETRY_PROMPT = `${SYSTEM_PROMPT}
 EK KURAL: Çıktı sadece Türkçe (Latin script) olmalı. Devanagari, Hangul, Kiril, Arapça, Çince ve diğer script karakterleri kesinlikle yasak.`;
@@ -303,6 +314,10 @@ function shouldLogValidationFailure(provider: "ollama" | "gemini", reasons: stri
 }
 
 function validateSummary(summary: string, provider: "ollama" | "gemini", strictAttempt: boolean): boolean {
+  if (META_SUMMARY.test(summary)) {
+    aiMetrics.ai_lang_validation_fail_total += 1;
+    return false;
+  }
   if (!AI_LANG_GUARD) return true;
   const result = validateTurkishOutput(summary);
   if (result.valid) return true;
@@ -406,10 +421,13 @@ const updateAiSummaryStmt = db.prepare(`
 // It used to run here at module scope, i.e. on every import, which also
 // re-nulled every legitimately short summary on each restart.
 
+// Only theatre stories are summarized. The prompt answers anything else with
+// "Bölgesel çatışmayla doğrudan ilgisi yok." (hidden by the feed), so the
+// model time spent on the other half of each cycle bought nothing.
 const getUnsummarizedStmt = db.prepare(`
   SELECT id, title, description
   FROM articles
-  WHERE aiSummary IS NULL
+  WHERE aiSummary IS NULL AND ${THEATRE_SQL}
   ORDER BY pubDate DESC
   LIMIT ?
 `);
@@ -417,7 +435,8 @@ const getUnsummarizedStmt = db.prepare(`
 const getLatestSummariesStmt = db.prepare(`
   SELECT id, title, aiSummary, source
   FROM articles
-  WHERE aiSummary IS NOT NULL AND aiSummary != 'Özet alınamadı'
+  WHERE aiSummary IS NOT NULL AND aiSummary NOT IN ('Özet alınamadı', '${OFF_TOPIC_SUMMARY}')
+    AND ${THEATRE_SQL}
   ORDER BY pubDate DESC
   LIMIT ?
 `);

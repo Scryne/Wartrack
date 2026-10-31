@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Activity, Database, Eye, EyeOff, KeyRound, Play, RefreshCw, Save, Settings2, Trash2, X } from 'lucide-react';
-import { useSettingsStore } from '../stores/useSettingsStore';
+import { useSettingsStore, type SettingsTab } from '../stores/useSettingsStore';
 import { useWatchlistStore } from '../stores/useWatchlistStore';
 import { showToast } from './Toast';
 import { ApiKeyError, apiFetch } from '../lib/api';
@@ -37,7 +37,6 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
   );
 }
 
-type SettingsTab = 'general' | 'intelligence' | 'security' | 'diagnostics';
 
 const TABS: Array<{ id: SettingsTab; label: string; Icon: typeof Settings2 }> = [
   { id: 'general', label: 'Genel', Icon: Settings2 },
@@ -53,11 +52,16 @@ interface AiStatus {
 }
 
 function SettingsModal() {
-  const { open, rssInterval, autoSummarize, aiModel, threatSound, setOpen, update } = useSettingsStore();
+  const { open, openTab, rssInterval, autoSummarize, aiModel, threatSound, setOpen, update } = useSettingsStore();
   const { keywords, addKeyword, removeKeyword } = useWatchlistStore();
   const apiKey = useAuthStore((s) => s.apiKey);
   const setApiKey = useAuthStore((s) => s.setApiKey);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(openTab);
+
+  // Each opening starts on the tab its caller asked for.
+  useEffect(() => {
+    if (open) setActiveTab(openTab);
+  }, [open, openTab]);
   const [saving, setSaving] = useState(false);
   const [watchInput, setWatchInput] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);

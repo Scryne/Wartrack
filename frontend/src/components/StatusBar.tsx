@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Settings, Volume2, VolumeX } from 'lucide-react';
+import { KeyRound, Settings, Volume2, VolumeX } from 'lucide-react';
 import { useConnectionStore } from '../stores/useConnectionStore';
+import { useAuthStore } from '../stores/useAuthStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useFeedStore } from '../stores/useFeedStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -17,6 +18,10 @@ const clockFormat = new Intl.DateTimeFormat('tr-TR', {
 
 const StatusBar = () => {
   const connected = useConnectionStore((s) => s.connected);
+  const problem = useConnectionStore((s) => s.problem);
+  const hasKey = useAuthStore((s) => s.apiKey.trim().length > 0);
+  // The server refused the stream for its key; say so instead of "no connection".
+  const needsKey = problem === 'unauthorized';
   const level = useEventStore((s) => s.threatLevel);
   const { keywords, matches } = useWatchlistStore();
   const watchCount = useFeedStore((s) => s.articles.filter((a) => matches(a.title).length > 0).length);
@@ -59,10 +64,23 @@ const StatusBar = () => {
           </span>
         </div>
 
-        <span className="wt-live" data-connected={connected}>
-          <span className="wt-live-dot" aria-hidden="true" />
-          {connected ? 'CANLI' : 'BAĞLANTI YOK'}
-        </span>
+        {!connected && needsKey ? (
+          <button
+            type="button"
+            className="wt-live wt-live-action"
+            data-connected="false"
+            title="Canlı akış operatör anahtarı ister. Anahtarı Ayarlar'a girin."
+            onClick={() => useSettingsStore.getState().setOpen(true, 'security')}
+          >
+            <KeyRound size={12} strokeWidth={2} aria-hidden="true" />
+            {hasKey ? 'ANAHTAR GEÇERSİZ' : 'ANAHTAR GEREKLİ'}
+          </button>
+        ) : (
+          <span className="wt-live" data-connected={connected}>
+            <span className="wt-live-dot" aria-hidden="true" />
+            {connected ? 'CANLI' : 'BAĞLANTI YOK'}
+          </span>
+        )}
       </div>
 
       <div className="wt-statusbar-group">

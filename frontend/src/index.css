@@ -577,6 +577,20 @@ html, body, #root {
   color: var(--color-danger);
 }
 
+/* The stream was refused for its key: a fix the operator can make, so a button. */
+.wt-live-action {
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.wt-live-action:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
 .wt-live-dot {
   width: 6px;
   height: 6px;

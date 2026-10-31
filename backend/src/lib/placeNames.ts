@@ -86,8 +86,15 @@ export interface PlaceCheck {
 }
 
 let placeModel = PLACE_CHECK_MODEL;
+let override: ((source: string, summary: string) => Promise<PlaceCheck>) | null = null;
+
+/** For tests: replace the model call, or null to restore it. */
+export function setPlaceCheck(fn: ((source: string, summary: string) => Promise<PlaceCheck>) | null): void {
+  override = fn;
+}
 
 export async function checkSummaryPlaces(source: string, summary: string): Promise<PlaceCheck> {
+  if (override) return override(source, summary);
   const client = process.env.SUMMARY_PLACE_CHECK === "0" ? null : getTypeSafeClient();
   if (!client) return { ok: true, p: null };
   try {

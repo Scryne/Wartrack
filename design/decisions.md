@@ -71,3 +71,22 @@ seti lucide (emoji yasak); tek aksan kobalt. Kod bu brifle çelişiyordu; tur bu
 **Tipografi:** gövde `Inter` → `Inter Tight` (DESIGN.md 6.2), yalnız 400/500/600 ağırlık.
 
 **Bilinçli bırakılan:** `DesignTokensView` token değerlerini hex olarak gösterir (belgeleme sayfası).
+
+## 2026-10-31 · pano · tur 4 (konu süzgeci sonrası)
+
+**İyi:** HUD kimliği tutarlı (tek aksan, mono veri, token'lı renk); 390 px'te yığın düzen taşmasız.
+
+**Kötü:**
+1. Alt "Son özetler" şeridinde konu dışı içerik akıyordu (antik mumya haberi, "Bu metin, politik yorumlar, müzik…"
+   diye başlayan model açıklaması).
+2. Başlıkta "BAĞLANTI YOK": sunucu ayaktaydı, akışı reddeden şey eksik anahtardı. Operatöre yanlış sorunu söylüyordu.
+3. Anahtar Ayarlar'a yazıldıktan sonra canlı akış yenilemeden bağlanmıyordu (Socket.IO, ara katmanın reddettiği
+   bağlantıyı kendiliğinden yeniden denemez).
+4. Anahtar istemi Ayarlar'ı "Genel" sekmesinde açıyordu; anahtar alanı "Güvenlik"te.
+
+**Uygulanan:** 1 → şerit ve özetleyici yalnız bölge haberlerini alır, meta cevap reddedilir. 2 → reddedilen anahtar
+ayrı durum: "ANAHTAR GEREKLİ" / "ANAHTAR GEÇERSİZ" düğmesi; sunucu gerçekten yoksa "BAĞLANTI YOK" kalır.
+3 → anahtar değişince bağlantı yeniden kurulur (600 ms bekleme). 4 → düğme Ayarlar'ı Güvenlik sekmesinde açar.
+Canlı tarayıcıda doğrulandı: anahtarsız → istem → sekme → anahtar → yenilemeden CANLI.
+
+**Ortam notu:** görsel doğrulamadaki `googlevideo ERR_SSL_PROTOCOL_ERROR` bu ağın YouTube medya engeli; uygulama hatası değil.

@@ -1,5 +1,5 @@
 import fs from "fs/promises";
-import { placeGlossaryFor, withPlaceGlossary, checkSummaryPlaces } from "../src/lib/placeNames";
+import { placeGlossaryFor, withPlaceGlossary, checkSummaryPlaces, setPlaceCheck } from "../src/lib/placeNames";
 
 describe("place glossary", () => {
   it("lists the Turkish names of the places a story mentions", () => {
@@ -43,7 +43,7 @@ describe("summarizer rejects a summary that moves the story elsewhere", () => {
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    vi.doUnmock("../src/lib/placeNames");
+    setPlaceCheck(null);
     const { default: db, DATABASE_PATH } = await import("../src/db");
     db.close();
     await fs.unlink(DATABASE_PATH).catch(() => undefined);
@@ -51,16 +51,12 @@ describe("summarizer rejects a summary that moves the story elsewhere", () => {
   });
 
   it("retries once with the strict prompt and stores nothing if both fail the place check", async () => {
-    vi.resetModules();
     const prompts: string[] = [];
     vi.stubGlobal("fetch", (_url: string, init: { body: string }) => {
       prompts.push(JSON.parse(init.body).prompt as string);
       return Promise.resolve(new Response(JSON.stringify({ response: "İran, Humus Boğazı'nı kapatmakla tehdit etti." })));
     });
-    vi.doMock("../src/lib/placeNames", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("../src/lib/placeNames")>()),
-      checkSummaryPlaces: () => Promise.resolve({ ok: false, p: 0.06 })
-    }));
+    setPlaceCheck(() => Promise.resolve({ ok: false, p: 0.06 }));
 
     const { summarizeArticle } = await import("../src/services/summarize.service");
     const result = await summarizeArticle(1, "Iran threatens to close the Strait of Hormuz");

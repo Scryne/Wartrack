@@ -148,3 +148,46 @@ describe("topic relevance", () => {
     expect(row).toEqual({ theatreScore: 0.88, theatreModel: "jev-test" });
   });
 });
+
+describe("summaries follow the theatre", () => {
+  it("queues only theatre stories for the summarizer", async () => {
+    relevance.setClassifier(fakeClassifier({ "Strike on Sanaa": 0.9, "Election poll in Jerusalem": 0.05 }));
+    insertArticle("Strike on Sanaa", true);
+    insertArticle("Election poll in Jerusalem", true);
+    insertArticle("Unplaced world story", false);
+    await relevance.classifyPendingArticles();
+
+    const { getUnsummarized } = await import("../src/services/summarize.service");
+    expect(getUnsummarized(20).map((a) => a.title)).toEqual(["Strike on Sanaa"]);
+  });
+
+  it("keeps off-topic and fixed answers out of the latest-summaries ticker", async () => {
+    relevance.setClassifier(fakeClassifier({ "Strike on Sanaa": 0.9, "Mummy found near Luxor, Egypt": 0.02, "Talks in Doha": 0.8 }));
+    const strike = insertArticle("Strike on Sanaa", true);
+    const mummy = insertArticle("Mummy found near Luxor, Egypt", true);
+    const talks = insertArticle("Talks in Doha", true);
+    await relevance.classifyPendingArticles();
+    const set = db.prepare("UPDATE articles SET aiSummary = ? WHERE id = ?");
+    set.run("Husi hedeflerine yönelik hava saldırısı ile Sana bölgesinde patlamalar bildirildi ve kritik altyapı vuruldu.", strike);
+    set.run("Mısır'da antik bir mumya bulundu.", mummy);
+    set.run("Bölgesel çatışmayla doğrudan ilgisi yok.", talks);
+
+    const { getLatestSummaries } = await import("../src/services/summarize.service");
+    expect(getLatestSummaries(10).map((s) => s.aiSummary)).toEqual(["Husi hedeflerine yönelik hava saldırısı ile Sana bölgesinde patlamalar bildirildi ve kritik altyapı vuruldu."]);
+  });
+
+  it("rejects a summary that describes the text instead of the event", async () => {
+    // ollamaSummarize reads the global fetch at call time; no module reset, so
+    // the suite keeps one database connection to close.
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(new Response(JSON.stringify({ response: "Bu metin, politik yorumlar ve müzik tercihlerini konu almaktadır." })))
+    );
+    try {
+      const { summarizeArticle } = await import("../src/services/summarize.service");
+      const result = await summarizeArticle(999, "Strike on Sanaa");
+      expect(result.model).toBe("none");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

@@ -5,6 +5,7 @@ import { useEventStore } from '../stores/useEventStore';
 import { useMapStore } from '../stores/useMapStore';
 import { useConnectionStore } from '../stores/useConnectionStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useAuthStore } from '../stores/useAuthStore';
 import type { Article, Event as WarEvent, Pin } from '../types';
 import { apiFetch } from '../lib/api';
 
@@ -122,8 +123,27 @@ export function useSocket(): void {
 
     const onConnectError = (err: Error) => {
       setConnected(false);
-      console.warn('[SOCKET] Baglanti hatasi:', err.message);
+      // The server's handshake middleware rejects a missing or wrong key with
+      // this message; any other failure is the server being unreachable.
+      const unauthorized = /unauthori[sz]ed/i.test(err.message);
+      useConnectionStore.getState().setProblem(unauthorized ? 'unauthorized' : 'offline');
+      console.warn('[SOCKET] Bağlantı hatası:', err.message);
     };
+
+    // Socket.IO does not retry a connection the server's middleware refused,
+    // so a key typed into Settings never took effect until a page reload.
+    let lastKey = useAuthStore.getState().apiKey;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribeAuth = useAuthStore.subscribe((state) => {
+      if (state.apiKey === lastKey) return;
+      lastKey = state.apiKey;
+      clearTimeout(retryTimer);
+      // Typed key: wait for the operator to stop typing before the handshake.
+      retryTimer = setTimeout(() => {
+        if (socket.connected) socket.disconnect();
+        socket.connect();
+      }, 600);
+    });
 
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
@@ -143,6 +163,8 @@ export function useSocket(): void {
     if (!socket.connected) socket.connect();
 
     return () => {
+      unsubscribeAuth();
+      clearTimeout(retryTimer);
       socket.off('connect');
       socket.off('disconnect');
       socket.off('connect_error', onConnectError);
