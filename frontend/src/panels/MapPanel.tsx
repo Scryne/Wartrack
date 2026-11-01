@@ -81,7 +81,8 @@ function MapPanel({
   const showHeatmap = useLayerStore((s) => s.heatmap);
   const toggleLayer = useLayerStore((s) => s.toggle);
 
-  const [coords, setCoords] = useState<[number, number]>([37.4888, 42.6935]);
+  // İmleç koordinatı; fare haritaya girene dek kadrajın merkezini gösterir.
+  const [coords, setCoords] = useState<[number, number]>(() => WORKSPACES[0].center);
   const [pinMode, setPinMode] = useState(false);
   const [draftLatLng, setDraftLatLng] = useState<[number, number] | null>(null);
 

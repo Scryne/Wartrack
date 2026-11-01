@@ -57,8 +57,9 @@ export const useMapStore = create<MapStoreState>((set) => ({
   selectedPin: null,
   pinDrawerOpen: false,
   editingPin: null,
-  mapCenter: [32.0, 36.5],
-  zoom: 6,
+  // Varsayılan kadraj varsayılan çalışma alanından gelir (tek kaynak: data/workspaces.ts).
+  mapCenter: WORKSPACES[0].center,
+  zoom: WORKSPACES[0].zoom,
   activeWorkspace: 'iran-israel',
   legendFilters: [],
   hoveredLegendKey: null,
