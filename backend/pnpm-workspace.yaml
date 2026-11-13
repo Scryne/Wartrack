@@ -7,6 +7,9 @@ allowBuilds:
 
 # Security floors for transitive dependencies (pnpm audit, 2026-10-26):
 # express 4.22.3 still pins body-parser 1.20.8; node-cron 3.0.3 pins uuid 8.3.2.
+# 2026-11-13: express pins qs 6.15.x; typescript-estree asks minimatch ^10 (all <11.0.1 affected).
 overrides:
   body-parser: ^1.20.9
   uuid: ^11.1.1
+  qs: ^6.16.1
+  '@typescript-eslint/typescript-estree>minimatch': ^11.0.8
