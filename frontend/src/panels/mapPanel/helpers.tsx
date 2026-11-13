@@ -11,11 +11,12 @@ export function CursorTracker({ onMove }: { onMove: (v: [number, number]) => voi
   return null;
 }
 
-export function ViewportSync({ center, zoom }: { center: [number, number]; zoom: number }) {
+/** Bölge değişince haritayı bölgenin sınır kutusuna sığdırır: dar ekranda da bölgenin tamamı görünür. */
+export function ViewportSync({ bounds }: { bounds: [[number, number], [number, number]] }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo(center, zoom, { duration: 0.65 });
-  }, [map, center, zoom]);
+    map.flyToBounds(bounds, { duration: 0.65, padding: [12, 12] });
+  }, [map, bounds]);
   return null;
 }
 

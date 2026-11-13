@@ -53,4 +53,6 @@ export interface Workspace {
   name: string;
   center: [number, number];
   zoom: number;
+  /** [[güney, batı], [kuzey, doğu]]: kadraj her panel genişliğinde bu kutuya sığdırılır. */
+  bounds: [[number, number], [number, number]];
 }

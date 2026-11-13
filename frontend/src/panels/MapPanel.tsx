@@ -407,7 +407,7 @@ function MapPanel({
             />
             <DrawController drawLayerRef={drawLayerRef} pinMode={pinMode} />
             <CursorTracker onMove={setCoords} />
-            <ViewportSync center={workspace.center} zoom={workspace.zoom} />
+            <ViewportSync bounds={workspace.bounds} />
           </MapContainer>
 
         <div className="wt-map-control wt-map-theatres segment-container" role="tablist" aria-label="Harita bölgesi">
