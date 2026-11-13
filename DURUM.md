@@ -6,6 +6,20 @@
 tehdit seviyesi gerekçesiyle hesaplanıyor, haberler yerel modelle Türkçe özetleniyor ve durum özeti
 üretiliyor; testler, lint, tip denetimi, Linux CI ve Lighthouse (erişilebilirlik 97) yeşil.
 
+## Bitirme denetimi (2026-11-13)
+
+- **Ölçüm:** frontend 57 test, backend 260 test geçti; tsc ve eslint 0; `pnpm audit` 0 (`28a9ada`: vitest 4, qs,
+  minimatch). CI'ın son koşusu yeşil, açık PR yok.
+- **Gezi:** veritabanının kopyasıyla, zamanlanmış çekim kapalıyken (`DISABLE_SCHEDULED_FETCH=1`). Pano
+  390/768/1280/1440 × koyu ve açık temada 0 taşma, 0 konsol hatası. Ayarlar paneli (390/1440), Ctrl+K paleti ve
+  anahtarsız açılış ("ANAHTAR GEREKLİ") görüldü.
+- **Bulunan → düzeltilen:** 390'da İran–İsrail kadrajı İsrail ve Levant'ı sol kenarın dışında bırakıyordu (sabit
+  merkez + zoom). Bölgeler artık sınır kutusuna sığdırılıyor (`7050541`); üç bölge 390 ve 1440'ta gözle doğrulandı.
+- **Kareler:** `_portfolyo/ekranlar/Wartrack/2026-11/` kapak.png (960×600 @3) ve pano.png (1440×900 @2). Canlı
+  yayın paneli karede boş: üçüncü taraf yayın görüntüsü kareye alınmadı.
+- **Görülmedi:** yeniden bağlanma şeridinin gerçek kopmada görünüşü ve yerel modelle özet üretimi (bu turda
+  LLM çağrısı yapılmadı).
+
 ## Ne çalışıyor (ölçüldü)
 
 - **Testler:** backend 242 (23 dosya), frontend 54. Testler geçici bir veritabanı ve geçici yedek
