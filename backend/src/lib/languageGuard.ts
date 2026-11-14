@@ -56,7 +56,8 @@ const FOREIGN_MARKER_WORDS = [
   "would",
   "could",
   "should",
-  "can",
+  // "can" yok: Türkçede "can kaybı" (casualties) savaş özetlerinin en sık kalıbı; listede
+  // dururken 20 kelimeden kısa her "can kaybı" özeti yabancı sayılıp atılıyordu.
   "their",
   "there",
   "they",
